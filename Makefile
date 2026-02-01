@@ -71,9 +71,9 @@ update-bootstrap:
 
 test:  
 	rm -rf openapi_generated /tmp/wg-slim-build.lock /tmp/wg-slim-rm.lock
-	$(MAKE) openapi-client > /dev/null 2>&1
-	$(MAKE) openapi-server > /dev/null 2>&1
-	$(MAKE) openapi-python-client > /dev/null 2>&1
+	$(MAKE) openapi-client
+	$(MAKE) openapi-server
+	$(MAKE) openapi-python-client
 	ruff check --fix --exclude openapi_generated
 	ruff format --exclude openapi_generated
 	$(MAKE) test-ci
