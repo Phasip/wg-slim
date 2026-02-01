@@ -1,0 +1,33 @@
+FROM debian:latest
+
+ENV PYTHONDONTWRITEBYTECODE=1
+ENV PYTHONUNBUFFERED=1
+
+ENV INITIAL_CONFIG="basic:\n  password: password\n  bind_addr: \"5000\"\nserver:\n  interface_name: wg0\n"
+ENV DOCKER_TEST_BUILD_FULL_TARGET=1
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+        python3 \
+        python3-pip \
+        make \
+        default-jre-headless \
+        nodejs \
+        npm \
+        docker-cli \
+        wireguard-tools \
+        nftables \
+        chromium-driver \
+        chromium \
+        && rm -rf /var/lib/apt/lists/*
+
+
+RUN npm install -g pyright
+
+WORKDIR /app
+COPY . /app
+
+RUN pip install --no-cache-dir --break-system-packages -r requirements-dev.txt
+ENV PYTHONPATH="${PYTHONPATH}:/app/openapi_generated/python-fastapi/src"
+RUN rm -rf openapi_generated static/js/openapi-client.js
+ENTRYPOINT ["make", "test"]

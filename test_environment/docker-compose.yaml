@@ -1,0 +1,39 @@
+version: '3.8'
+
+services:
+  # The application server built from this repository. It reads /data/config.yaml.
+  wg-slim:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+      target: base
+    container_name: wg-slim
+    ports:
+      - "8000:5000"
+      - "51820:51820/udp"
+    environment:
+      - PYTHONUNBUFFERED=1
+    cap_add:
+      - NET_ADMIN
+    volumes:
+      - ./config_primary.yaml:/data/config.yaml
+      - ../:/app
+    privileged: true
+    sysctls:
+      - net.ipv4.conf.all.src_valid_mark=1
+      - net.ipv4.ip_forward=1
+
+  peer1:
+    build:
+      context: ./peer
+      dockerfile: Dockerfile
+    container_name: wg-peer-1
+    cap_add:
+      - NET_ADMIN
+    privileged: true
+    sysctls:
+      - net.ipv4.conf.all.src_valid_mark=1
+      - net.ipv4.ip_forward=1
+    depends_on:
+      - wg-slim
+

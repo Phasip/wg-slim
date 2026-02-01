@@ -1,0 +1,16 @@
+# Exclude virtualenvs, caches and generated files from build context
+.venv
+venv
+__pycache__
+.pytest_cache
+.hypothesis
+node_modules
+.git
+dist
+build
+*.pyc
+*.pyo
+*.pyd
+*.db
+*.sqlite3
+.ruff_cache

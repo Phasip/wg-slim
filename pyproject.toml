@@ -1,0 +1,35 @@
+[tool.ruff]
+line-length = 256
+exclude = ["tests", ".venv", "openapi_generated", "test_environment", "data"]
+
+[tool.ruff.lint]
+extend-select =  ["E", "F", "W", "B"]
+
+[tool.pyright]
+executionEnvironments = [{root = "${workspaceFolder}", pythonVersion = "3.10" }]
+include = ["."]
+exclude = ["tests", ".venv", "openapi_generated", "test_environment", "data"]
+reportMissingImports = true
+reportMissingTypeStubs = false
+reportUnknownMemberType = "warning"
+reportUnknownParameterType = "error"
+reportUnknownVariableType = "error"
+reportUnknownArgumentType = "error"
+reportUntypedFunctionDecorator = "error"
+reportAssignmentType = "error"
+reportUnusedFunction = "error"
+typeCheckingMode = "basic"
+
+[pylint]
+enable = ["pointless-statement", "broad-except"]
+
+
+[tool.pytest.ini_options]
+# Filtering deprecation warnings that will be fixed in our dependencies instead of here. 
+filterwarnings = [
+# Caused by the generated fastapi code
+	"ignore:`regex` has been deprecated, please use `pattern` instead:Warning:.*openapi_server.*",
+# Caused by the use of uvicorn
+	"ignore:websockets.server.WebSocketServerProtocol is deprecated:DeprecationWarning:uvicorn.*",
+	"ignore:websockets.legacy is deprecated; see.*:DeprecationWarning:websockets.*",
+]

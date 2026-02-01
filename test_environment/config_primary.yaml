@@ -1,0 +1,56 @@
+basic:
+  bind_addr: '5000'
+  password: testpassword
+peers:
+- as_peer: |
+    PublicKey = liIrRLQlB6rAQIhlt2w5dsCgnc7auPz9sPFdPadSgUg=
+    AllowedIPs = 10.0.0.3/32
+    PreSharedKey = khPjBsO54D8Lzf5ecdW42ZVQJlsMTdnAcK8CvuDkB6o=
+  default: false
+  enabled: true
+  interface: |
+    PrivateKey = mOP+VqpVLwJp+f6x7F4V6urEXC0D2wO6MXcN0j58d1A=
+    Address = 10.0.0.3/24
+    MTU = 1420
+  name: peer1
+- as_peer: |
+    PublicKey = Ixry8RnhW0+q0iZe3dQvCy2jM3WeD0Q0EvW6TK4RoHM=
+    AllowedIPs = 0.0.0.0/0
+    Endpoint = wg-slim:51820
+    PersistentKeepalive = 25
+  default: false
+  enabled: true
+  interface: |
+    PrivateKey = qJghEiUtLMnjNUYyLVpzGkDPTk8li6gLnIov4hDYvGA=
+    Address = 10.0.0.1/24
+    ListenPort = 51820
+    MTU = 1420
+  name: primary-server
+- as_peer: |-
+    PublicKey = 2FKl8CNS2BABCsLe/bNjWUpyrOVss19/TlQHZSSkFz0=
+    AllowedIPs = 10.0.0.2/32
+    PersistentKeepalive = 25
+  default: false
+  enabled: false
+  interface: |-
+    Address = 10.0.0.2/32
+    PrivateKey = uGDli58ks9V3zxIuyWL0iXOxpOSiCRgYnJJaqxlUf34=
+    DNS = 1.1.1.1, 8.8.8.8
+    MTU = 1420
+  name: abc
+- as_peer: |-
+    PublicKey = 5OCdtJ0S52zEDJ+Mzm43omkFIlv8zT4lJ/8UE9bYfz8=
+    AllowedIPs = 10.0.0.4/32
+    PersistentKeepalive = 25
+  default: false
+  enabled: true
+  interface: |-
+    Address = 10.0.0.4/32
+    PrivateKey = UE19X26JiJpidXIdGpjTcn0DEHal4bBxjJ06zAEXM2I=
+    DNS = 1.1.1.1, 8.8.8.8
+    MTU = 1420
+  name: abd
+server:
+  fw_rules: null
+  interface_name: wg1
+  name: primary-server

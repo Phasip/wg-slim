@@ -1,0 +1,676 @@
+openapi: 3.0.3
+info:
+  title: wg-slim API
+  version: 1.0.0
+security:
+- bearerAuth: []
+servers:
+  - url: http://127.0.0.1:8000/api
+    description: Development server
+paths:
+  /login:
+    post:
+      security: []
+      summary: Login
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+      responses:
+        '200':
+          description: Login succeeded
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  access_token:
+                    type: string
+                  token_type:
+                    type: string
+                  message:
+                    type: string
+        '400':
+          $ref: '#/components/responses/ErrorResponse'
+        '401':
+          $ref: '#/components/responses/ErrorResponse'
+        '403':
+          $ref: '#/components/responses/ErrorResponse'
+  /logout:
+    get:
+      summary: Logout
+      responses:
+        '200':
+          description: Logout succeeded
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Success'
+        '400':
+          $ref: '#/components/responses/ErrorResponse'
+        '401':
+          $ref: '#/components/responses/ErrorResponse'
+        '403':
+          $ref: '#/components/responses/ErrorResponse'
+  /server/yaml:
+    get:
+      summary: Get server YAML
+      responses:
+        '200':
+          description: YAML returned
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/YamlResponse'
+        '401':
+          $ref: '#/components/responses/ErrorResponse'
+    put:
+      summary: Set server YAML
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ServerYamlPutRequest'
+      responses:
+        '200':
+          description: Updated
+        '400':
+          $ref: '#/components/responses/ErrorResponse'
+        '401':
+          $ref: '#/components/responses/ErrorResponse'
+  /server/status:
+    get:
+      summary: Get server status
+      responses:
+        '200':
+          description: Status
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ServerStatus'
+        '401':
+          $ref: '#/components/responses/ErrorResponse'
+  /server:
+    get:
+      summary: Get the server configuration
+      responses:
+        '200':
+          description: Server configuration
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Server'
+        '401':
+          $ref: '#/components/responses/ErrorResponse'
+  /server/logs:
+    get:
+      summary: Get recent logs
+      responses:
+        '200':
+          description: Logs list
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ServerLogsResponse'
+        '400':
+          $ref: '#/components/responses/ErrorResponse'
+        '401':
+          $ref: '#/components/responses/ErrorResponse'
+    delete:
+      summary: Clear logs
+      responses:
+        '200':
+          description: Cleared
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Success'
+        '401':
+          $ref: '#/components/responses/ErrorResponse'
+  /wg-show:
+    get:
+      summary: Get raw wg show output
+      responses:
+        '200':
+          description: Raw wg output
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WgShowMap'
+        '401':
+          $ref: '#/components/responses/ErrorResponse'
+  /peers:
+    get:
+      summary: List peers
+      responses:
+        '200':
+          description: Peers
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PeersList'
+        '401':
+          $ref: '#/components/responses/ErrorResponse'
+    post:
+      summary: Add peer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PeersPostRequest'
+      responses:
+        '201':
+          description: Created
+        '400':
+          $ref: '#/components/responses/ErrorResponse'
+        '409':
+          $ref: '#/components/responses/ErrorResponse'
+        '401':
+          $ref: '#/components/responses/ErrorResponse'
+  /peers/{peer_name}:
+    delete:
+      summary: Delete peer
+      parameters:
+      - name: peer_name
+        in: path
+        required: true
+        schema:
+          type: string
+          pattern: ^[A-Za-z0-9_\-]{1,64}$
+      responses:
+        '200':
+          description: Deleted
+        '404':
+          $ref: '#/components/responses/ErrorResponse'
+        '401':
+          $ref: '#/components/responses/ErrorResponse'
+        '400':
+          $ref: '#/components/responses/ErrorResponse'
+  /peers/{peer_name}/config:
+    get:
+      summary: Get peer config
+      parameters:
+      - name: peer_name
+        in: path
+        required: true
+        schema:
+          type: string
+          pattern: ^[A-Za-z0-9_\-]{1,64}$
+      responses:
+        '200':
+          description: Config
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ConfigResponse'
+        '404':
+          $ref: '#/components/responses/ErrorResponse'
+        '401':
+          $ref: '#/components/responses/ErrorResponse'
+        '400':
+          $ref: '#/components/responses/ErrorResponse'
+  /peers/{peer_name}/qr:
+    get:
+      summary: Get peer QR code as PNG
+      parameters:
+      - name: peer_name
+        in: path
+        required: true
+        schema:
+          type: string
+          pattern: ^[A-Za-z0-9_\-]{1,64}$
+      responses:
+        '200':
+          description: PNG
+        '404':
+          $ref: '#/components/responses/ErrorResponse'
+        '401':
+          $ref: '#/components/responses/ErrorResponse'
+        '400':
+          $ref: '#/components/responses/ErrorResponse'
+  /peers/{peer_name}/regenerate-key:
+    post:
+      summary: Regenerate peer key
+      parameters:
+      - name: peer_name
+        in: path
+        required: true
+        schema:
+          type: string
+          pattern: ^[A-Za-z0-9_\-]{1,64}$
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Success'
+        '404':
+          $ref: '#/components/responses/ErrorResponse'
+        '401':
+          $ref: '#/components/responses/ErrorResponse'
+        '400':
+          $ref: '#/components/responses/ErrorResponse'
+  /peers/{peer_name}/enable:
+    post:
+      summary: Enable a peer
+      parameters:
+      - name: peer_name
+        in: path
+        required: true
+        schema:
+          type: string
+          pattern: ^[A-Za-z0-9_\-]{1,64}$
+      responses:
+        '200':
+          description: OK
+        '404':
+          $ref: '#/components/responses/ErrorResponse'
+        '401':
+          $ref: '#/components/responses/ErrorResponse'
+  /peers/{peer_name}/disable:
+    post:
+      summary: Disable a peer
+      parameters:
+      - name: peer_name
+        in: path
+        required: true
+        schema:
+          type: string
+          pattern: ^[A-Za-z0-9_\-]{1,64}$
+      responses:
+        '200':
+          description: OK
+        '404':
+          $ref: '#/components/responses/ErrorResponse'
+        '401':
+          $ref: '#/components/responses/ErrorResponse'
+  /config:
+    get:
+      summary: Get raw YAML config
+      responses:
+        '200':
+          description: Raw config
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ConfigResponse'
+        '401':
+          $ref: '#/components/responses/ErrorResponse'
+    put:
+      summary: Update raw YAML config
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ConfigPutRequest'
+      responses:
+        '200':
+          description: Updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Success'
+        '400':
+          $ref: '#/components/responses/ErrorResponse'
+        '401':
+          $ref: '#/components/responses/ErrorResponse'
+  /config/import-wg:
+    post:
+      summary: Import wg.conf text and endpoint
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ConfigImportWgPostRequest'
+      responses:
+        '200':
+          description: Imported
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Success'
+        '400':
+          $ref: '#/components/responses/ErrorResponse'
+        '401':
+          $ref: '#/components/responses/ErrorResponse'
+  /settings/password:
+    put:
+      summary: Change admin password
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SettingsPasswordPutRequest'
+            example:
+              confirm_password: "newpass"
+              current_password: "original_password"
+              new_password: "newpass"
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Success'
+        '400':
+          $ref: '#/components/responses/ErrorResponse'
+        '401':
+          $ref: '#/components/responses/ErrorResponse'
+        '403':
+          $ref: '#/components/responses/ErrorResponse'
+  /peers/{peer_name}/yaml:
+    get:
+      summary: Get peer YAML
+      parameters:
+      - name: peer_name
+        in: path
+        required: true
+        schema:
+          type: string
+          pattern: ^[A-Za-z0-9_\-]{1,64}$
+      responses:
+        '200':
+          description: YAML
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/YamlResponse'
+        '404':
+          $ref: '#/components/responses/ErrorResponse'
+        '401':
+          $ref: '#/components/responses/ErrorResponse'
+    put:
+      summary: Set peer YAML
+      parameters:
+      - name: peer_name
+        in: path
+        required: true
+        schema:
+          type: string
+          pattern: ^[A-Za-z0-9_\-]{1,64}$
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PeersPeerNameYamlPutRequest'
+      responses:
+        '200':
+          description: Updated
+        '400':
+          $ref: '#/components/responses/ErrorResponse'
+        '404':
+          $ref: '#/components/responses/ErrorResponse'
+        '401':
+          $ref: '#/components/responses/ErrorResponse'
+  /update-all-peers:
+    post:
+      summary: Update all peer configs based on a template
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateAllPeersPostRequest'
+      responses:
+        '200':
+          description: Updated
+        '400':
+          $ref: '#/components/responses/ErrorResponse'
+        '404':
+          $ref: '#/components/responses/ErrorResponse'
+        '401':
+          $ref: '#/components/responses/ErrorResponse'
+  /health:
+    get:
+      security: []
+      summary: Health check
+      responses:
+        '200':
+          description: Healthy
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: random-data
+  schemas:
+    Error:
+      type: object
+      nullable: false
+      properties:
+        error:
+          type: string
+    Success:
+      type: object
+      nullable: false
+      properties:
+        message:
+          type: string
+      example:
+        message: Logged out
+    
+    PeersList:
+      type: object
+      nullable: false
+      properties:
+        peers:
+          type: array
+          items:
+            $ref: '#/components/schemas/Peer'
+    
+    YamlResponse:
+      type: object
+      nullable: false
+      properties:
+        yaml:
+          type: string
+    LoginRequest:
+      type: object
+      nullable: false
+      properties:
+        password:
+          type: string
+          minLength: 1
+      required:
+      - password
+    ServerYamlPutRequest:
+      type: object
+      nullable: false
+      properties:
+        yaml:
+          type: string
+          minLength: 1
+          format: yaml-server
+      required:
+      - yaml
+    ServerStatus:
+      type: object
+      nullable: false
+      properties:
+        status:
+          type: string
+        interface:
+          type: string
+        is_running:
+          type: boolean
+
+    WgShowMap:
+      type: object
+      nullable: false
+      additionalProperties:
+        type: string
+    PeersPostRequest:
+      type: object
+      nullable: false
+      properties:
+        name:
+          type: string
+          pattern: ^[A-Za-z0-9_\-]{1,64}$
+      required:
+      - name
+    
+    PeersPeerNameYamlPutRequest:
+      type: object
+      nullable: false
+      properties:
+        yaml:
+          type: string
+          format: yaml-peer
+      required:
+      - yaml
+    ConfigPutRequest:
+      type: object
+      nullable: false
+      properties:
+        yaml:
+          type: string
+          minLength: 1
+          format: yaml-fullconf
+      required:
+      - yaml
+    ConfigImportWgPostRequest:
+      type: object
+      nullable: false
+      properties:
+        wg_config:
+          type: string
+          minLength: 1
+          format: wgconf
+        endpoint:
+          type: string
+          minLength: 1
+          pattern: '^(\[[A-Fa-f0-9:]+\]|[A-Za-z0-9.-]+)(:[0-9]{1,5})?$'
+      required:
+      - wg_config
+      - endpoint
+    Password:
+      type: string
+      minLength: 1
+    SettingsPasswordPutRequest:
+      type: object
+      nullable: false
+      properties:
+        current_password:
+          $ref: '#/components/schemas/Password'
+        new_password:
+          $ref: '#/components/schemas/Password'
+        confirm_password:
+          $ref: '#/components/schemas/Password'
+      required:
+      - current_password
+      - new_password
+      - confirm_password
+    UpdateAllPeersPostRequest:
+      type: object
+      nullable: false
+      properties:
+        template_peer:
+          type: string
+      required:
+      - template_peer
+    ConfigResponse:
+      type: object
+      nullable: false
+      properties:
+        config:
+          type: string
+    ServerLogsResponse:
+      type: object
+      nullable: false
+      properties:
+        logs:
+          type: array
+          items:
+            type: string
+    WireGuardConfig:
+      type: object
+      nullable: false
+      required:
+      - basic
+      - server
+      - peers
+      additionalProperties: false
+      properties:
+        basic:
+          $ref: '#/components/schemas/ConfigBasic'
+        server:
+          $ref: '#/components/schemas/Server'
+        peers:
+          type: array
+          items:
+            $ref: '#/components/schemas/Peer'
+    ConfigBasic:
+      type: object
+      nullable: false
+      required:
+      - password
+      - bind_addr
+      additionalProperties: false
+      properties:
+        password:
+          $ref: '#/components/schemas/Password'
+        bind_addr:
+          type: string
+    Server:
+      type: object
+      nullable: false
+      required:
+      - name
+      - interface_name
+      additionalProperties: false
+      properties:
+        name:
+          type: string
+          minLength: 1
+          pattern: '^[A-Za-z][A-Za-z0-9._-]{0,63}$'
+        interface_name:
+          type: string
+          minLength: 1
+          pattern: '^[A-Za-z][A-Za-z0-9._-]{0,14}$'
+          default: wg0
+        fw_rules:
+          type: string
+          nullable: true
+          description: "Firewall rules (nftables) template as multiline string"
+    Peer:
+      type: object
+      nullable: false
+      required:
+      - name
+      - interface
+      - as_peer
+      additionalProperties: false
+      properties:
+        name:
+          type: string
+          minLength: 1
+          pattern: ^[A-Za-z0-9_\-]{1,64}$
+        interface:
+          type: string
+          minLength: 1
+        as_peer:
+          type: string
+          minLength: 1
+          
+        enabled:
+          type: boolean
+          default: true
+        default:
+          type: boolean
+          default: false
+  responses:
+    ErrorResponse:
+      description: Error response
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'

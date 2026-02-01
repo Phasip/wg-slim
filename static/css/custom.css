@@ -1,0 +1,123 @@
+/* Merged styles moved from templates/base.html and templates/dashboard.html */
+:root {
+    --wg-primary: #88171a;
+    --wg-secondary: #b91f24;
+}
+
+body {
+    background-color: #f8f9fa;
+}
+
+.navbar,
+.card-header {
+    background-color: var(--wg-primary) !important;
+    color: white;
+}
+
+.btn-wg {
+    background-color: var(--wg-primary);
+    border-color: var(--wg-primary);
+    color: white;
+}
+
+.btn-wg:hover {
+    background-color: var(--wg-secondary);
+    border-color: var(--wg-secondary);
+    color: white;
+}
+
+
+.peer-card {
+    transition: transform 0.2s;
+}
+
+.peer-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+}
+
+.status-online {
+    color: #28a745;
+}
+
+.status-offline {
+    color: #dc3545;
+}
+
+.stats-badge {
+    font-size: 0.8rem;
+}
+
+
+
+.loading {
+    display: none;
+}
+
+.loading.active {
+    display: inline-block;
+}
+
+/* Dashboard-specific styles */
+#deleteModal.modal { z-index: 2000 !important; }
+
+/* Make peer cards fill the available width while keeping a sensible minimum size */
+.peers-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(480px, 1fr));
+    gap: 1rem;
+    align-items: stretch;
+}
+
+/* Ensure each grid cell's card stretches to full height and width */
+.peers-grid .peer-item {
+    display: flex;
+}
+
+.peers-grid .peer-item .card {
+    flex: 1 1 auto;
+    display: flex;
+    flex-direction: column;
+}
+
+/* Keep the existing small pre area from collapsing */
+.peers-grid .wg-show {
+    white-space: pre-wrap;
+    max-height: 200px;
+    overflow: auto;
+}
+
+/* Logs container styling */
+#logs-container {
+    height: 400px;
+    overflow-y: auto;
+    font-family: monospace;
+    font-size: 12px;
+}
+
+/* Server peer highlighting */
+.peer-server .card-header {
+    background: linear-gradient(90deg, #D4AF37 0%, #c99e2f 100%) !important;
+    color: #000 !important;
+}
+.peer-server .badge-server {
+    background-color: #D4AF37;
+    color: #000;
+    margin-right: 0.5rem;
+}
+
+/* Silver styling for secondary/replica server */
+.peer-server-secondary .card-header {
+    background: linear-gradient(90deg, #C0C0C0 0%, #A8A8A8 100%) !important;
+    color: #000 !important;
+}
+.peer-server-secondary .badge-server {
+    background-color: #C0C0C0;
+    color: #000;
+}
+
+/* make disabled anchor buttons visually disabled when using Bootstrap */
+a.disabled {
+    pointer-events: none;
+    opacity: 0.65;
+}

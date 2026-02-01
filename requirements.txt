@@ -1,0 +1,8 @@
+pyyaml
+pyqrcode
+pypng
+fastapi
+jinja2
+uvicorn[standard]
+requests
+python-dateutil
