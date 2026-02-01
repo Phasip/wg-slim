@@ -8,3 +8,4 @@ webdriver-manager
 ruff
 schemathesis
 docker
+pyright
