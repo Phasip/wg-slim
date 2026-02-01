@@ -16,7 +16,6 @@ Made to be super-simple to setup while exposing full configurability of wireguar
 Access the web UI at http://localhost:5000
 Default password: password (set via `INITIAL_CONFIG` environment variable — provide the initial config as YAML text)
 ```bash
-docker build -t wg-slim:latest .
 docker-compose -f examples/docker-compose.basic.yml up -d
 ```
 
