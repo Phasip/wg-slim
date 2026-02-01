@@ -67,6 +67,7 @@ def generated_unauth_api_client(unauth_api_client):
             status = response.status_code
             reason = None
             data = response.content
+            headers = dict(response.headers)
 
             def read(self):
                 return self.data
