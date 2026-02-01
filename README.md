@@ -3,10 +3,14 @@
 # STATUS
 - Alpha quality software. Runs fine for me but probably has bugs.
 
+
 # Description
 Dockerized wireguard with web-ui. Specification-first, API endpoints generated from `openapi.yaml` specification.
 
 Made to be super-simple to setup while exposing full configurability of wireguard.
+
+<img width="1013" height="668" alt="image" src="https://github.com/user-attachments/assets/8e4675d7-3162-42a5-b398-c4ab1ca7cc57" />
+
 
 ## Quick Start
 Access the web UI at http://localhost:5000
