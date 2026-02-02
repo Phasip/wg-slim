@@ -14,9 +14,15 @@ Made to be super-simple to setup while exposing full configurability of wireguar
 
 ## Quick Start
 Access the web UI at http://localhost:5000
-Default password: password (set via `INITIAL_CONFIG` environment variable — provide the initial config as YAML text)
+
+If no password is set via the `INITIAL_CONFIG` environment variable 
+a new password is generated and output to stdout on first run.
 ```bash
-docker-compose -f examples/docker-compose.basic.yml up -d
+$ docker-compose -f examples/docker-compose.basic.yml up -d
+$ docker-compose -f examples/docker-compose.basic.yml logs | grep password
+wg-slim_1  | First setup, no initial password provided.
+wg-slim_1  | Web management password: SqxEyHToOYkvALVk
+
 ```
 
 The server and each peer has two sections, "inteface" and "as_peer". The "interface" section configures [Interface] section for that users config. The "as_peer" section configures "[Peer]" section that will be seen in other configs.
