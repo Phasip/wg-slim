@@ -1,39 +1,40 @@
 # wg-slim
 
-# STATUS
+## STATUS
+
 - Alpha quality software. Runs fine for me but probably has bugs.
 
+## Description
 
-# Description
 Dockerized wireguard with web-ui. Specification-first, API endpoints generated from `openapi.yaml` specification.
 
 Made to be super-simple to setup while exposing full configurability of wireguard.
 
 <img width="1013" height="668" alt="image" src="https://github.com/user-attachments/assets/8e4675d7-3162-42a5-b398-c4ab1ca7cc57" />
 
-
 ## Quick Start
+
 Access the web UI at http://localhost:5000
 
-If no password is set via the `INITIAL_CONFIG` environment variable 
-a new password is generated and output to stdout on first run.
+If no password is set via the `INITIAL_CONFIG` environment variable a new password is generated and output to stdout on first run.
+
 ```bash
 $ docker-compose -f examples/docker-compose.basic.yml up -d
 $ docker-compose -f examples/docker-compose.basic.yml logs | grep password
 wg-slim_1  | First setup, no initial password provided.
 wg-slim_1  | Web management password: SqxEyHToOYkvALVk
-
 ```
 
 The server and each peer has two sections, "inteface" and "as_peer". The "interface" section configures [Interface] section for that users config. The "as_peer" section configures "[Peer]" section that will be seen in other configs.
 
 ## PreSharedKey (PSK) handling
-wg-slim supports PSK configuration with some caveats.
-Each peer, including server, can only have one PSK defined.
+
+wg-slim supports PSK configuration with some caveats. Each peer, including server, can only have one PSK defined.
 
 Allowing more flexible PSK configuration could not be motivated due to increasing complexity or cause portability issues.
 
 PSK selection rules:
+
 - **Client-to-Server**: Uses the client's PSK first, if not defined uses server's PSK
 - **Server-to-Server**: Uses either server's PSK (warns if they differ)
 - **Client-to-Client**: Not applicable (clients don't connect to each other)
@@ -52,10 +53,12 @@ TODO: Reason whether unique PSK-seeds should be implemented that are used to gen
 Note: Config file will be generated if not existing, thus INITIAL_CONFIG is only relevant at first run.
 
 ## Files
-Docker compose example: `examples/docker-compose.basic.yml`
-Test environment with server and one peer: `test_environment/`
-Converter scripts (for migration): `converters/`
 
+Docker compose example: `examples/docker-compose.basic.yml`
+
+Test environment with server and one peer: `test_environment/`
+
+Converter scripts (for migration from other systems. Note. probably broken): `converters/`    
 ## Development
 
 ### 1. Setup dependencies
@@ -94,34 +97,38 @@ make test
 ```
 
 ### Full test in docker (only docker required)
+
 ```bash
 make test-docker
 ```
 
+## Security
 
-# Security
-## Pros
+### Pros
+
 - Strict HTTP headers
 - Timing attack resistant password and token comparison
 - No cookies, only bearer tokens in Authorization header
 - Specification first API design with auto-generated server routes enforicing input format and authentication
 - Lots of tests to counter horrible AI coding
 - Low attack surface (no databases, only local bootstrap in frontend, minimal dependencies)
-## Cons
+
+### Cons
+
 - Plaintext password in config and no pw policies (it's a feature!)
 - Command injection through PostUp/PostDown (it's a feature!)
 - No rate limiting or brute-force protection
 - No HTTPS (Expose only internally or use some other container for that I guess)
 - All private keys stored unencrypted and fully accessible to anyone with the password.
 
+## Known issues
 
-# Known issues
 - Test sometimes leaves broken state files, delete /tmp/wg-slim-*.lock to undo
 - Some tests randomly fail due to timing issues (TODO)
 - Port change has no effect until restart (TODO?)
 
+## TODO
 
-TODO:
 - How to handle mesh of servers?
 - Some issue with PSK when multiple peers with endpoints
 - Maybe let peers request their own WG.conf using their private key.
