@@ -12,12 +12,14 @@ PASSWORD = "testpassword"
 
 print("Peer entrypoint starting")
 
+time.sleep(2)
 s = requests.Session()
 for _ in range(10):
     try:
         s.get(WG_SLIM_URL + "/api/health")
         break
-    except requests.exceptions.RequestException:
+    except requests.exceptions.RequestException as e:
+        print("Failed to connect to wg-slim, retrying...", e)
         time.sleep(10)
 else:
     print("Failed to connect to wg-slim")
