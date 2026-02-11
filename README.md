@@ -10,7 +10,7 @@ Dockerized wireguard with web-ui. Specification-first, API endpoints generated f
 
 Made to be super-simple to setup while exposing full configurability of wireguard.
 
-<img width="1013" height="668" alt="image" src="https://github.com/user-attachments/assets/8e4675d7-3162-42a5-b398-c4ab1ca7cc57" />
+<img width="1157" height="730" alt="screenshot" src="https://github.com/user-attachments/assets/e695e841-96ae-4527-bef7-6b04d2fd3932" />
 
 ## Quick Start
 
