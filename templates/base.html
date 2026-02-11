@@ -16,7 +16,16 @@
         {% block content %}{% endblock %}
     </div>
 
-    <!-- Footer removed per UI update -->
+    <!-- Version footer -->
+    <footer class="mt-5 py-3">
+        <div class="container">
+            <div class="row text-muted small">
+                <div class="col text-end">
+                    {{ version }}
+                </div>
+            </div>
+        </div>
+    </footer>
 
     <script nonce="{{ csp_nonce }}" src="/static/js/bootstrap.bundle.min.js"></script>
     {% block extra_js %}{% endblock %}

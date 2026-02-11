@@ -6,6 +6,9 @@ import stat
 import secrets
 from contextvars import ContextVar
 
+# Version info - updated during Docker build
+VERSION = "dev build dev"
+
 from fastapi import Request
 from fastapi.responses import JSONResponse, RedirectResponse, Response
 from fastapi.templating import Jinja2Templates
@@ -65,13 +68,19 @@ def attach_ui_routes(app: FastAPI):
 
     @app.get("/login")
     def login_page(request: Request):  # pyright: ignore[reportUnusedFunction]
-        return templates.TemplateResponse(request, "login.html", {"csp_nonce": request.state.csp_nonce})
+        return templates.TemplateResponse(request, "login.html", {
+            "csp_nonce": request.state.csp_nonce,
+            "version": VERSION
+        })
 
     app.add_api_route("/", lambda: RedirectResponse(url="/login"), methods=["GET"])
 
     @app.get("/dashboard")
     def dashboard(request: Request):  # pyright: ignore[reportUnusedFunction]
-        return templates.TemplateResponse(request, "dashboard.html", {"csp_nonce": request.state.csp_nonce})
+        return templates.TemplateResponse(request, "dashboard.html", {
+            "csp_nonce": request.state.csp_nonce,
+            "version": VERSION
+        })
 
     @app.get("/favicon.ico")
     def _favicon():  # pyright: ignore[reportUnusedFunction]

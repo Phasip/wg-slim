@@ -5,7 +5,6 @@ __pycache__
 .pytest_cache
 .hypothesis
 node_modules
-.git
 dist
 build
 *.pyc

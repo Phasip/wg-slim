@@ -39,6 +39,7 @@ RUN apt-get update \
         default-jre-headless \
         nodejs \
         npm \
+        git \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
@@ -50,19 +51,21 @@ RUN pip3 install --no-cache-dir --break-system-packages -r /app/requirements-bui
 
 # Copy project files and run generation
 COPY . /app/
+# Update VERSION variable in wg_api.py with git hash and build date
+RUN sed -i "s/VERSION = \"dev build dev\"/VERSION = \"$(git rev-parse --short HEAD 2>/dev/null || echo 'unknown') build $(date -u +%Y-%m-%d)\"/" /app/wg_api.py
 RUN rm -rf openapi_generated static/js/openapi-client.js
 RUN make openapi-client
 RUN make openapi-server
 RUN make openapi-python-client
 
 FROM base AS full
+COPY --from=dev /app/*.py /app/
 
-# Copy runtime application source
-COPY *.py /app/
 # Silence the deprecated warnings from the outdated generator
-COPY pyproject.toml /app/
-COPY templates /app/templates
-COPY static /app/static
+COPY --from=dev /app/pyproject.toml /app/
+
+COPY --from=dev /app/templates /app/templates
+COPY --from=dev /app/static /app/static
 
 # Copy generated artifacts from dev stage (if present)
 COPY --from=dev /app/openapi_generated /tmp/openapi_generated
