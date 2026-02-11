@@ -6,8 +6,6 @@ import stat
 import secrets
 from contextvars import ContextVar
 
-# Version info - updated during Docker build
-VERSION = "dev build dev"
 
 from fastapi import Request
 from fastapi.responses import JSONResponse, RedirectResponse, Response
@@ -30,6 +28,10 @@ import wg_utils
 import openapi_server.security_api as _security_api
 from openapi_server.apis.default_api import router as DefaultApiRouter
 from openapi_server.models.error import Error as OpenAPIError
+
+# Version info - updated during Docker build
+VERSION = "dev build dev"
+
 
 logging.basicConfig(
     level=logging.INFO,
@@ -68,19 +70,13 @@ def attach_ui_routes(app: FastAPI):
 
     @app.get("/login")
     def login_page(request: Request):  # pyright: ignore[reportUnusedFunction]
-        return templates.TemplateResponse(request, "login.html", {
-            "csp_nonce": request.state.csp_nonce,
-            "version": VERSION
-        })
+        return templates.TemplateResponse(request, "login.html", {"csp_nonce": request.state.csp_nonce, "version": VERSION})
 
     app.add_api_route("/", lambda: RedirectResponse(url="/login"), methods=["GET"])
 
     @app.get("/dashboard")
     def dashboard(request: Request):  # pyright: ignore[reportUnusedFunction]
-        return templates.TemplateResponse(request, "dashboard.html", {
-            "csp_nonce": request.state.csp_nonce,
-            "version": VERSION
-        })
+        return templates.TemplateResponse(request, "dashboard.html", {"csp_nonce": request.state.csp_nonce, "version": VERSION})
 
     @app.get("/favicon.ico")
     def _favicon():  # pyright: ignore[reportUnusedFunction]
