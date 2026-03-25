@@ -313,9 +313,9 @@ class SyncedConfigManager:
 
         - `base_dict` provides the base values for the returned dict.
         - `primary` and `secondary` are only consulted for the PSK decision.
-        - If `secondary` provides a PSK, it is preferred. If both provide PSKs
-          and they differ, the primary PSK is returned as an alternate comment.
-        - If only `primary` provides a PSK, it will be used.
+        - If `primary` provides a PSK, it is used. If only `secondary` provides
+          a PSK, it will be used as fallback.
+        - If both differ, `secondary` is noted as an alternate in a comment.
         - Returns (merged_dict, conflict_comment_or_None).
         """
         merged = base_dict.copy()
