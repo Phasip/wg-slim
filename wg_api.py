@@ -131,7 +131,8 @@ def create_app(sync_service: WgConfigSyncService | None = None, config_file: str
         logger.warning("Config file %s is world-writable; set permissions to 600 to protect secrets", config_file)
 
     log_file = _config_manager.get_log_file_path()
-    logging.getLogger().addHandler(logging.FileHandler(log_file))
+    _log_handler = logging.FileHandler(log_file)
+    logging.getLogger().addHandler(_log_handler)
     logger.info("Starting WG-Slim")
 
     _sync_service: WgConfigSyncService = sync_service if sync_service is not None else WgConfigSyncService(config_manager=_config_manager)
@@ -220,6 +221,7 @@ def create_app(sync_service: WgConfigSyncService | None = None, config_file: str
         root_app.add_exception_handler(exc, _unified_exception_handler)
 
     root_app.state.active_tokens = {}  # dict[str, datetime]: token -> expiry
+    root_app.state.log_handler = _log_handler
 
     root_app.state.config_manager = _config_manager
     root_app.state.sync_service = _sync_service
