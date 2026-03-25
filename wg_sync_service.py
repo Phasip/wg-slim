@@ -37,8 +37,12 @@ class WgConfigSyncService:
 
         os.makedirs(self.output_dir, exist_ok=True)
         content = self.config_manager.generate_server_config(self.config_manager.config.server.name)
-        with open(output_config, "w") as f:
+        # Write with O_CREAT so the file is created with mode 0o600 if new,
+        # then chmod to enforce 0o600 on pre-existing files too (private keys inside).
+        fd = os.open(output_config, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+        with os.fdopen(fd, "w") as f:
             f.write(content)
+        os.chmod(output_config, 0o600)
         logger.info("Generated config file: %s", output_config)
 
         logger.info("Syncing configuration to interface %s...", interface)
