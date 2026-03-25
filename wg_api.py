@@ -90,7 +90,6 @@ DEFAULT_CONFIG_FILE = "/data/config.yaml"
 
 DEFAULT_INITIAL_CONFIG = """\
 basic:
-  password: password
   bind_addr: "5000"
 server:
   interface_name: wg0

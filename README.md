@@ -47,7 +47,7 @@ TODO: Reason whether unique PSK-seeds should be implemented that are used to gen
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `INITIAL_CONFIG` | `basic:\n  password: password\n  bind_addr: "5000"\nserver:\n  interface_name: wg0` | Initial config as YAML text (used if no config file exists) |
+| `INITIAL_CONFIG` | `basic:\n  bind_addr: "5000"\nserver:\n  interface_name: wg0` | Initial config as YAML text (used if no config file exists) |
 | `CONFIG_FILE` | `/data/config.yaml` | Configuration file path |
 
 Note: Config file will be generated if not existing, thus INITIAL_CONFIG is only relevant at first run.
