@@ -5,6 +5,7 @@ import os
 import stat
 import secrets
 from contextvars import ContextVar
+from datetime import datetime, timedelta, timezone
 
 
 from fastapi import Request
@@ -43,15 +44,18 @@ token: ContextVar[str] = ContextVar("token")
 request_ctx: ContextVar[Request | None] = ContextVar("request_ctx")
 
 
+TOKEN_TTL = timedelta(hours=24)
+
+
 def revoke_active_token(app: FastAPI) -> None:
     token_value = token.get(None)
     if token_value:
-        app.state.active_tokens.discard(token_value)
+        app.state.active_tokens.pop(token_value, None)
 
 
 def create_access_token(app: FastAPI) -> str:
     token = wg_utils.generate_random_password(32)
-    app.state.active_tokens.add(token)
+    app.state.active_tokens[token] = datetime.now(timezone.utc) + TOKEN_TTL
     return token
 
 
@@ -102,8 +106,9 @@ async def _get_token_bearerAuth(request: Request):
         raise FastAPIHTTPException(status_code=401, detail="Authentication required")
 
     token_in = auth.split(" ", 1)[1]
-    for active_token in request.app.state.active_tokens:
-        if wg_utils.secure_strcmp(token_in, active_token):
+    for active_token, expiry in request.app.state.active_tokens.items():
+        if wg_utils.secure_strcmp(token_in, active_token) and datetime.now(timezone.utc) <= expiry:
+            request.app.state.active_tokens[active_token] = datetime.now(timezone.utc) + TOKEN_TTL
             token.set(token_in)
             return token_in
 
@@ -214,7 +219,7 @@ def create_app(sync_service: WgConfigSyncService | None = None, config_file: str
     for exc in exception_mappings.keys():
         root_app.add_exception_handler(exc, _unified_exception_handler)
 
-    root_app.state.active_tokens = set()
+    root_app.state.active_tokens = {}  # dict[str, datetime]: token -> expiry
 
     root_app.state.config_manager = _config_manager
     root_app.state.sync_service = _sync_service
