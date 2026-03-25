@@ -145,7 +145,8 @@ class DefaultApiImpl(BaseDefaultApi):
     async def server_logs_delete(self) -> Success:
         cfg = get_cm()
         log_file = cfg.get_log_file_path()
-        open(log_file, "w", encoding="utf-8").close()
+        with open(log_file, "w", encoding="utf-8"):
+            pass
         return Success(message="")
 
     async def wg_show_get(self) -> dict[str, str] | None:
