@@ -159,7 +159,7 @@ class SyncedConfigManager:
 
     def add_peer(self, name: str) -> Peer:
         with self._lock:
-            if not re.match(r"^[a-zA-Z0-9_-]+$", name):
+            if not re.fullmatch(r"[a-zA-Z0-9_-]+", name):
                 raise ValueError("Invalid peer name")
             if any(p.name == name for p in self._config.peers):
                 raise PeerExistsException(f"Peer '{name}' exists")
