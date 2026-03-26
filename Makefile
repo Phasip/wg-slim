@@ -25,30 +25,22 @@ OPENAPI_DIST := openapi_generated/dist/openapi-client.js
 
 # Generate + build + bundle the TypeScript `typescript-fetch` client and copy to static
 openapi-client:
-	@echo "Generating typescript-fetch client into $(OPENAPI_FETCH_DIR)"
-	@mkdir -p openapi_generated
-	openapi-generator-cli generate -i openapi.yaml -g typescript-fetch -o $(OPENAPI_FETCH_DIR) \
+	mkdir -p openapi_generated
+	JAVA_OPTS="-Dlog.level=ERROR" openapi-generator-cli generate -i openapi.yaml -g typescript-fetch -o $(OPENAPI_FETCH_DIR) \
 		--additional-properties=supportsES6=true,npmName=@wg-slim/openapi-client,modelPropertyNaming=original; 
-	echo "Installing generated client dependencies (local install)"; 
 	npm --prefix $(OPENAPI_FETCH_DIR) install; 
-	echo "Building generated client (tsc)"; 
 	npm --prefix $(OPENAPI_FETCH_DIR) run build; 
-	echo "Bundling client into single browser JS ($(OPENAPI_DIST))"; 
 	mkdir -p $(dir $(OPENAPI_DIST)); 
 	npx --yes esbuild $(OPENAPI_FETCH_DIR)/dist/index.js --bundle --format=iife --global-name=OpenApiClient --outfile=$(OPENAPI_DIST) --minify; 
-	echo "Copying bundle to static directory ($(STATIC_JS))"; 
 	mkdir -p $(STATIC_JS); 
 	cp $(OPENAPI_DIST) $(STATIC_JS)/openapi-client.js; 
-	echo "openapi-client built and copied to $(STATIC_JS)/openapi-client.js"; 
-
+	
 # Generate Python client for CLI usage
 openapi-python-client:
-	@echo "Generating python client into openapi_generated/python-client"
-	@mkdir -p openapi_generated
-	openapi-generator-cli generate -i openapi.yaml -g python -o openapi_generated/python-client \
+	mkdir -p openapi_generated
+	JAVA_OPTS="-Dlog.level=ERROR" openapi-generator-cli generate -i openapi.yaml -g python -o openapi_generated/python-client \
 		--additional-properties=packageName=wgslim_api_client,projectName=wgslim-api-client; \
-	echo "Generated python client at openapi_generated/python-client"
-
+	
 # Update Bootstrap CSS and JS to latest version
 update-bootstrap:
 	@echo "Updating Bootstrap to latest version..."
