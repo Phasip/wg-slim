@@ -32,3 +32,4 @@ htmlcov/
 Thumbs.db
 .hypothesis
 /openapi_generated/
+static/js/openapi-client.js
