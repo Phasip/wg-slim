@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   wg-slim:
     image: ghcr.io/phasip/wg-slim:latest
