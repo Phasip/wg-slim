@@ -3,6 +3,7 @@ import tempfile
 import shutil
 import uuid
 import requests
+import re
 
 from conftest import run_container, free_port_tcp, free_port_udp, wait_for_healthcheck, PROJECT_ROOT
 
@@ -41,9 +42,16 @@ def test_start_container_without_config(docker_image, docker_network):
             print(f"Container logs:\n{logs}")
             raise AssertionError("wg-slim container did not become healthy")
 
-        # The default initial password expected from the auto-created config
+        # Read auto-generated password from container logs (printed during first-run)
+        logs = container.logs(stdout=True, stderr=True, tail=500).decode("utf-8", errors="ignore")
+        m = re.search(r"Web management password:\s*([^\s]+)", logs)
+        if not m:
+            print(f"Container logs:\n{logs}")
+            raise AssertionError("Could not find generated password in container logs")
+        password = m.group(1)
+
         session = requests.Session()
-        auth_resp = session.post(f"{base_url}/api/login", json={"password": "password"})
+        auth_resp = session.post(f"{base_url}/api/login", json={"password": password})
         assert auth_resp.status_code == 200, f"Login failed: {auth_resp.status_code} {auth_resp.text}"
         token = auth_resp.json().get("access_token")
         assert token, "No access token returned"
