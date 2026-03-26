@@ -42,21 +42,15 @@ openapi-python-client:
 # Update Bootstrap CSS and JS to latest version
 update-bootstrap:
 	@echo "Updating Bootstrap to latest version..."
-	@mkdir -p $(STATIC_CSS) $(STATIC_JS)
+	mkdir -p $(STATIC_CSS) $(STATIC_JS)
 	curl -sL $(BOOTSTRAP_CDN)/css/bootstrap.min.css -o $(STATIC_CSS)/bootstrap.min.css
 	curl -sL $(BOOTSTRAP_CDN)/js/bootstrap.bundle.min.js -o $(STATIC_JS)/bootstrap.bundle.min.js
-	@echo "Bootstrap updated successfully"
-	@head -3 $(STATIC_JS)/bootstrap.bundle.min.js | grep -oP 'Bootstrap v[\d.]+' || true
 
 	@echo "Updating Bootstrap Icons to latest version..."
-	@mkdir -p $(STATIC_CSS) $(STATIC_FONTS)
+	mkdir -p $(STATIC_CSS) $(STATIC_FONTS)
 	curl -sL $(BOOTSTRAP_ICONS_CDN)/bootstrap-icons.min.css -o $(STATIC_CSS)/bootstrap-icons.min.css
 	curl -sL $(BOOTSTRAP_ICONS_CDN)/fonts/bootstrap-icons.woff -o $(STATIC_FONTS)/bootstrap-icons.woff
 	curl -sL $(BOOTSTRAP_ICONS_CDN)/fonts/bootstrap-icons.woff2 -o $(STATIC_FONTS)/bootstrap-icons.woff2
-	@echo "Bootstrap Icons updated successfully"
-	@# Fix font paths in CSS (CDN uses ../fonts/, we use fonts/)
-	sed -i 's|url("../fonts/|url("fonts/|g' $(STATIC_CSS)/bootstrap-icons.min.css
-	@echo "Fixed font paths in bootstrap-icons.min.css"
 
 
 test:  
