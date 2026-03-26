@@ -13,10 +13,8 @@ BOOTSTRAP_CDN := https://cdn.jsdelivr.net/npm/bootstrap@latest/dist
 BOOTSTRAP_ICONS_CDN := https://cdn.jsdelivr.net/npm/bootstrap-icons@latest/font
 
 openapi-server:
-	@echo "Generating python-fastapi server into openapi_generated/python-fastapi"
-	@mkdir -p openapi_generated
-	openapi-generator-cli generate -i openapi.yaml -g python-fastapi -o openapi_generated/python-fastapi; \
-	echo "Generated python-fastapi server at openapi_generated/python-fastapi"; \
+	mkdir -p openapi_generated
+	JAVA_OPTS="-Dlog.level=ERROR" openapi-generator-cli generate -i openapi.yaml -g python-fastapi -o openapi_generated/python-fastapi; \
 	
 
 # Paths for OpenAPI client generation and bundling
