@@ -28,6 +28,6 @@ WORKDIR /app
 COPY . /app
 
 RUN pip install --no-cache-dir --break-system-packages -r requirements-dev.txt
-ENV PYTHONPATH="${PYTHONPATH}:/app/openapi_generated/python-fastapi/src"
+ENV PYTHONPATH="${PYTHONPATH}:/app/openapi_generated/python-fastapi/src:/app/openapi_generated/python-client/"
 RUN rm -rf openapi_generated static/js/openapi-client.js
 ENTRYPOINT ["make", "test"]
