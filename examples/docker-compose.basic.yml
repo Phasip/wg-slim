@@ -3,7 +3,6 @@ version: '3.8'
 services:
   wg-slim:
     image: ghcr.io/phasip/wg-slim:latest
-    pull_policy: never
     ports:
       - "51820:51820/udp"
       - "5000:5000/tcp"
