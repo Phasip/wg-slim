@@ -86,6 +86,5 @@ test-integration:
 	python3 -m pytest tests/integration -ra -n auto
 
 test-docker:
-	# TODO: Nest
-	docker build --no-cache -f Dockerfile.test -t wg-slim-tester .
+	docker build --network host --no-cache -f Dockerfile.test -t wg-slim-tester .
 	docker run --rm --network host --privileged -v /var/run/docker.sock:/var/run/docker.sock wg-slim-tester
