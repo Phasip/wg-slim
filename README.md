@@ -58,7 +58,20 @@ Docker compose example: `examples/docker-compose.basic.yml`
 
 Test environment with server and one peer: `test_environment/`
 
-Converter scripts (for migration from other systems. Note. probably broken): `converters/`    
+Converter scripts (for migration from other systems): `converters/`
+
+- `converters/from_wgeasy_old.py` — wg-easy `wg0.json` importer (covered by `tests/test_converter_wgeasy.py`, output is validated against the `WireGuardConfig` schema in `openapi.yaml`):
+
+  ```bash
+  python converters/from_wgeasy_old.py wg0.json vpn.example.com:51820 [password] \
+      [--server-prefix 24] [--dns 1.1.1.1] [--mtu 1420] [--interface-name wg0] \
+      [--client-allowed-ips 0.0.0.0/0] > config.yaml
+  ```
+
+  Client names are sanitized to the peer name rules (`^[A-Za-z0-9_-]{1,64}$`) and de-duplicated. A per-client `allowedIPs` field (used by wg-easy forks for site-to-site peers) is appended to that peer's `as_peer` AllowedIPs after its own `/32`, i.e. it is read as "networks routed *to* this peer".
+
+- `converters/from_wg_conf.py` — plain `wg0.conf` importer and `converters/from_wgeasy_sqlite.py` — wg-easy sqlite importer. Note: these two are untested and probably broken.
+
 ## Development
 
 ### 1. Setup dependencies
