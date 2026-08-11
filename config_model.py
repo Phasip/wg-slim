@@ -5,9 +5,10 @@ from __future__ import annotations
 import logging
 import os
 import re
+import tempfile
 import threading
 import sys
-from ipaddress import ip_address, ip_network
+from ipaddress import IPv4Address, IPv6Address, ip_address, ip_network
 from typing import Any, Callable, Optional
 
 import pyqrcode
@@ -62,6 +63,62 @@ class DontKnowPeersPrivatekey(Exception):
     pass
 
 
+class _NoAliasSafeLoader(yaml.SafeLoader):
+    """SafeLoader that refuses YAML aliases.
+
+    Aliases let a tiny document expand into an enormous object graph (an
+    "alias bomb"), so they are rejected outright for YAML that arrives through
+    the API. Configs written by wg-slim itself never contain aliases.
+    """
+
+    def compose_node(self, parent: Any, index: Any) -> Any:
+        if self.check_event(yaml.AliasEvent):
+            raise ConfigValidationError("YAML aliases are not supported")
+        return super().compose_node(parent, index)
+
+
+def load_untrusted_yaml(content: str) -> Any:
+    """Parse YAML received through the API, refusing aliases.
+
+    Raises ConfigValidationError (mapped to HTTP 400) on anything unparseable.
+    """
+    try:
+        return yaml.load(content, Loader=_NoAliasSafeLoader)
+    except yaml.YAMLError as e:
+        raise ConfigValidationError(f"Invalid YAML: {e}") from e
+
+
+def _require_mapping(value: Any, message: str) -> None:
+    """Raise ConfigValidationError unless `value` is a mapping.
+
+    YAML from the API can be any node type, so indexing it blindly turns a bad
+    request into an unhandled KeyError/TypeError (HTTP 500).
+    """
+    if type(value) is not dict:
+        raise ConfigValidationError(message)
+
+
+def _peer_ip_addresses(peer: Peer) -> set[IPv4Address | IPv6Address]:
+    """Return every IP address in a peer's interface `Address` value.
+
+    Unparseable or missing entries are skipped: a single malformed peer must
+    not break address allocation for the whole config.
+    """
+    raw = wg_utils.parse_wg_section(peer.interface).get("Address")
+    found: set[IPv4Address | IPv6Address] = set()
+    if not raw:
+        return found
+    for entry in raw.split(","):
+        candidate = entry.split("/")[0].strip()
+        if not candidate:
+            continue
+        try:
+            found.add(ip_address(candidate))
+        except ValueError:
+            logger.warning("Ignoring unparseable Address %r on peer %s", candidate, peer.name)
+    return found
+
+
 class _MultilineStrDumper(yaml.SafeDumper):
     pass
 
@@ -95,7 +152,7 @@ class ConfigHelper:
 
     @staticmethod
     def update_from_yaml(obj: Any, yaml_content: str) -> None:
-        data = yaml.safe_load(yaml_content)
+        data = load_untrusted_yaml(yaml_content)
         validated = obj.__class__.model_validate(data)
         for key, value in validated.model_dump().items():
             setattr(obj, key, value)
@@ -134,19 +191,56 @@ class SyncedConfigManager:
         self._config = cfg
         logger.info("Loaded config from %s", self.file_path)
 
+    def _validate_invariants(self) -> None:
+        """Check the structural rules the rest of the code relies on.
+
+        Callers mutate the in-memory config and then call `save()`, so this
+        runs there rather than in each caller.
+        """
+        names = [p.name for p in self._config.peers]
+        duplicates = sorted({n for n in names if names.count(n) > 1})
+        if duplicates:
+            raise ConfigValidationError(f"Duplicate peer name(s): {', '.join(duplicates)}")
+        if self._config.server.name not in names:
+            raise ConfigValidationError(f"Server name '{self._config.server.name}' must match an existing peer")
+
+    def _write_to_disk(self) -> None:
+        """Write the config atomically, so an interrupted save cannot destroy it.
+
+        The config holds every private key, so the replacement file is created
+        0600 and swapped in with `os.replace()`.
+        """
+        directory = os.path.dirname(self.file_path) or "."
+        fd, tmp_path = tempfile.mkstemp(prefix=".config-", suffix=".yaml.tmp", dir=directory)
+        try:
+            with os.fdopen(fd, "w", encoding="utf-8") as f:
+                yaml.dump(self._config.model_dump(), f, Dumper=_MultilineStrDumper, default_flow_style=False)
+                f.flush()
+                os.fsync(f.fileno())
+            os.chmod(tmp_path, 0o600)
+            os.replace(tmp_path, self.file_path)
+        except OSError:
+            if os.path.exists(tmp_path):
+                os.remove(tmp_path)
+            raise
+
     def save(self) -> None:
         with self._lock:
-            # Call watchers before writing to disk; short-circuit on first failure
-            for watcher in self._on_config_change:
-                try:
+            # Any failure below - validation, a watcher, or the write itself -
+            # leaves the in-memory config half-changed, so reload the last good
+            # config from disk before the exception propagates.
+            completed = False
+            try:
+                self._validate_invariants()
+                # Call watchers before writing to disk; short-circuit on first failure
+                for watcher in self._on_config_change:
                     watcher()
-                except ConfigSyncException:
-                    # Reload the previous config from disk to restore valid state
+                # Write the configuration only after all watchers succeed
+                self._write_to_disk()
+                completed = True
+            finally:
+                if not completed:
                     self._load()
-                    raise
-            # Write the configuration only after all watchers succeed
-            with open(self.file_path, "w") as f:
-                yaml.dump(self._config.model_dump(), f, Dumper=_MultilineStrDumper, default_flow_style=False)
             logger.info("Saved config to %s", self.file_path)
 
     def add_on_config_change(self, callback: Callable[[], None]) -> None:
@@ -166,11 +260,24 @@ class SyncedConfigManager:
             srv = self._config.server
             # Server interface details are stored in the peer with name == server.name
             server_peer = get_peer(self._config, srv.name)
-            server_addr = wg_utils.parse_wg_section(server_peer.interface)["Address"]
-            network = ip_network(server_addr, strict=False)
-            used = {ip_address(server_addr.split("/")[0])} | {ip_address(wg_utils.parse_wg_section(p.interface)["Address"].split("/")[0]) for p in self._config.peers}
+            server_addr_raw = wg_utils.parse_wg_section(server_peer.interface).get("Address")
+            if not server_addr_raw:
+                raise ConfigValidationError(f"Server peer '{srv.name}' has no Address in its interface section")
 
-            next_ip = next(h for h in network.hosts() if h not in used)
+            # A dual-stack server lists several addresses; allocate from the first.
+            server_addr = server_addr_raw.split(",")[0].strip()
+            try:
+                network = ip_network(server_addr, strict=False)
+            except ValueError as e:
+                raise ConfigValidationError(f"Server peer '{srv.name}' has an invalid Address {server_addr!r}: {e}") from None
+
+            used: set[IPv4Address | IPv6Address] = set()
+            for p in self._config.peers:
+                used |= _peer_ip_addresses(p)
+
+            next_ip = next((h for h in network.hosts() if h not in used), None)
+            if next_ip is None:
+                raise ConfigValidationError(f"No free addresses left in {network}")
 
             priv, pub = WgManager.generate_keypair()
 
@@ -356,14 +463,14 @@ class SyncedConfigManager:
 
     def set_raw_config(self, content: str, ignore_password: bool = False) -> None:
         with self._lock:
-            try:
-                data = yaml.safe_load(content)
-            except yaml.YAMLError as e:
-                raise ConfigValidationError(f"Invalid YAML: {e}") from e
+            data = load_untrusted_yaml(content)
+            _require_mapping(data, "Config must be a YAML mapping with 'basic', 'server' and 'peers' sections")
             old = self._config
             try:
                 if ignore_password:
-                    data["basic"]["password"] = self._config.basic.password
+                    basic = data.get("basic")
+                    _require_mapping(basic, "Config is missing a 'basic' section")
+                    basic["password"] = self._config.basic.password
 
                 cfg = WireGuardConfig.model_validate(data)
 

@@ -159,7 +159,9 @@ class DefaultApiImpl(BaseDefaultApi):
         result: dict[str, str] = {}
 
         for p in app.state.config_manager.config.peers:
-            pub = wg_utils.parse_wg_section(p.as_peer)["PublicKey"]
+            # A peer edited through the API may lack a PublicKey; that must not
+            # break `wg show` for every other peer.
+            pub = wg_utils.parse_wg_section(p.as_peer).get("PublicKey")
             if pub and pub in blocks:
                 result[p.name] = blocks[pub]
             elif p.name == app.state.config_manager.config.server.name:
@@ -292,6 +294,10 @@ class DefaultApiImpl(BaseDefaultApi):
             cfg.save()
         except ConfigSyncException as e:
             raise HTTPException(status_code=400, detail=str(e)) from None
+
+        # The old password is gone; any session created with it must go too.
+        # The caller keeps its own token - it just proved it knows the password.
+        wg_api.revoke_other_tokens(app=_get_app())
 
         return Success(message="")
 

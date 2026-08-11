@@ -53,7 +53,34 @@ def revoke_active_token(app: FastAPI) -> None:
         app.state.active_tokens.pop(token_value, None)
 
 
+def revoke_other_tokens(app: FastAPI) -> None:
+    """Invalidate every session except the caller's.
+
+    Used after a password change: rotating the password must cut off any token
+    that leaked, otherwise a stolen 24h token outlives the credential it came
+    from (and its expiry is refreshed on every request).
+    """
+    current = token.get(None)
+    kept: dict[str, datetime] = {}
+    if current:
+        expiry = app.state.active_tokens.get(current)
+        if expiry is not None:
+            kept[current] = expiry
+    revoked = len(app.state.active_tokens) - len(kept)
+    app.state.active_tokens = kept
+    logger.info("Revoked %d other session(s) after password change", revoked)
+
+
+def prune_expired_tokens(app: FastAPI) -> None:
+    """Drop expired tokens so `active_tokens` cannot grow without bound."""
+    now = datetime.now(timezone.utc)
+    expired = [t for t, expiry in app.state.active_tokens.items() if expiry < now]
+    for t in expired:
+        app.state.active_tokens.pop(t, None)
+
+
 def create_access_token(app: FastAPI) -> str:
+    prune_expired_tokens(app)
     token = wg_utils.generate_random_password(32)
     app.state.active_tokens[token] = datetime.now(timezone.utc) + TOKEN_TTL
     return token
@@ -132,6 +159,11 @@ def create_app(sync_service: WgConfigSyncService | None = None, config_file: str
 
     log_file = _config_manager.get_log_file_path()
     _log_handler = logging.FileHandler(log_file)
+    try:
+        # The log sits next to the config and records client IPs and user agents.
+        os.chmod(log_file, 0o600)
+    except OSError as e:
+        logger.warning("Could not restrict permissions on %s: %s", log_file, e)
     logging.getLogger().addHandler(_log_handler)
     logger.info("Starting WG-Slim")
 

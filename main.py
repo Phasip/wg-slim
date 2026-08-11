@@ -29,22 +29,9 @@ import uvicorn
 from wg_api import ENV_CONFIG_FILE, DEFAULT_CONFIG_FILE, ENV_INITIAL_CONFIG, DEFAULT_INITIAL_CONFIG
 from config_model import SyncedConfigManager
 
-
-def parse_bind_addr(bind_addr: str) -> tuple[str, int]:
-    """Parse bind_addr into (host, port).
-
-    Supported formats:
-    - "5000" -> ("0.0.0.0", 5000)
-    - ":5000" -> ("0.0.0.0", 5000)
-    - "0.0.0.0:5000" -> ("0.0.0.0", 5000)
-    - "127.0.0.1:8080" -> ("127.0.0.1", 8080)
-    """
-    bind_addr = str(bind_addr)
-    if ":" in bind_addr:
-        host, port_str = bind_addr.rsplit(":", 1)
-        host = host if host else "0.0.0.0"
-        return host, int(port_str)
-    return "0.0.0.0", int(bind_addr)
+# Lives in wg_utils so the container healthcheck can reuse it without importing
+# the whole application.
+from wg_utils import parse_bind_addr
 
 
 def main() -> None:

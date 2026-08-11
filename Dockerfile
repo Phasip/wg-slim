@@ -1,4 +1,6 @@
-FROM debian:latest AS base
+# Pinned to a release tag rather than `latest`: an unpinned base silently
+# changes the OS, python and wireguard-tools versions between builds.
+FROM debian:trixie AS base
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
 
@@ -28,6 +30,7 @@ RUN mkdir -p /data
 EXPOSE 5000
 EXPOSE 51820/udp
 
+# Runs as root: wg-quick and nft need NET_ADMIN inside the container.
 CMD ["python3", "main.py"]
 
 FROM base AS dev
@@ -73,3 +76,7 @@ COPY --from=dev /app/static/js/openapi-client.js /app/static/js/openapi-client.j
 # Install python-fastapi and python-client from generated
 RUN pip3 install --no-cache-dir --break-system-packages /tmp/openapi_generated/python-fastapi
 RUN pip3 install --no-cache-dir --break-system-packages /tmp/openapi_generated/python-client
+
+# Queries /api/health on the configured bind_addr; see healthcheck.py.
+HEALTHCHECK --interval=30s --timeout=10s --start-period=15s --retries=3 \
+    CMD ["python3", "/app/healthcheck.py"]

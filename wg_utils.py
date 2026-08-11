@@ -99,6 +99,23 @@ def build_wg_section(values: WireguardDict) -> str:
     return "\n".join(lines)
 
 
+def parse_bind_addr(bind_addr: str) -> Tuple[str, int]:
+    """Parse bind_addr into (host, port).
+
+    Supported formats:
+    - "5000" -> ("0.0.0.0", 5000)
+    - ":5000" -> ("0.0.0.0", 5000)
+    - "0.0.0.0:5000" -> ("0.0.0.0", 5000)
+    - "127.0.0.1:8080" -> ("127.0.0.1", 8080)
+    """
+    bind_addr = str(bind_addr)
+    if ":" in bind_addr:
+        host, port_str = bind_addr.rsplit(":", 1)
+        host = host if host else "0.0.0.0"
+        return host, int(port_str)
+    return "0.0.0.0", int(bind_addr)
+
+
 def generate_random_password(length=16) -> str:
     """Return a random password of specified length."""
     return secrets.token_urlsafe(length)[:length]

@@ -27,6 +27,8 @@ wg-slim_1  | Web management password: SqxEyHToOYkvALVk
 
 The server and each peer has two sections, "inteface" and "as_peer". The "interface" section configures [Interface] section for that users config. The "as_peer" section configures "[Peer]" section that will be seen in other configs.
 
+Two rules are enforced on every save, and a config violating either is rejected with a 400: peer names must be unique, and one peer must be named after `server.name` (that peer holds the server's own interface). Renaming the server peer therefore fails — change `server.name` and the peer name together in the config editor.
+
 ## PreSharedKey (PSK) handling
 
 wg-slim supports PSK configuration with some caveats. Each peer, including server, can only have one PSK defined.
@@ -122,6 +124,9 @@ make test-docker
 - Strict HTTP headers
 - Timing attack resistant password and token comparison
 - No cookies, only bearer tokens in Authorization header
+- Changing the password revokes every other session (the caller keeps its own)
+- Config is written atomically and always as 0600 (it holds every private key)
+- YAML submitted through the API may not use aliases (blocks alias-expansion bombs)
 - Specification first API design with auto-generated server routes enforicing input format and authentication
 - Lots of tests to counter horrible AI coding
 - Low attack surface (no databases, only local bootstrap in frontend, minimal dependencies)
