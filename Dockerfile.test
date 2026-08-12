@@ -4,7 +4,6 @@ ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
 
 ENV INITIAL_CONFIG="basic:\n  password: password\n  bind_addr: \"5000\"\nserver:\n  interface_name: wg0\n"
-ENV DOCKER_TEST_BUILD_FULL_TARGET=1
 
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
@@ -27,7 +26,10 @@ RUN npm install -g pyright
 WORKDIR /app
 COPY . /app
 
-RUN pip install --no-cache-dir --break-system-packages -r requirements-dev.txt
-ENV PYTHONPATH="${PYTHONPATH}:/app/openapi_generated/python-fastapi/src:/app/openapi_generated/python-client/"
-RUN rm -rf openapi_generated static/js/openapi-client.js
+# Debian marks its python as externally managed; `make test` pip-installs the
+# generated packages, so allow that for every pip call in this image.
+ENV PIP_BREAK_SYSTEM_PACKAGES=1
+
+RUN pip install --no-cache-dir -r requirements-dev.txt
+RUN make openapi-clean
 ENTRYPOINT ["make", "test"]

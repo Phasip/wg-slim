@@ -51,15 +51,10 @@ jobs:
           pip install -r requirements-build.txt
 
       - name: Generate OpenAPI artifacts
-        run: |
-          make openapi-server
-          make openapi-client
-          make openapi-python-client
+        run: make openapi
 
       - name: Install generated packages
-        run: |
-          pip install openapi_generated/python-fastapi
-          pip install openapi_generated/python-client
+        run: make install-generated
 
       - name: Run tests
         run: make test-ci

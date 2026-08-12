@@ -94,17 +94,12 @@ pip install -r requirements-build.txt
 ### 2. Generate and install openapi.yaml dependent code
 
 ```bash
-# Generate OpenAPI server and clients
-make openapi-server
-make openapi-client
-make openapi-python-client
-
-# Install generated Python packages in editable mode (required for development)
-pip install -e openapi_generated/python-fastapi
-pip install -e openapi_generated/python-client --config-settings editable_mode=compat
+# Generate the OpenAPI server and clients, then install the Python packages
+make openapi
+make install-generated
 ```
 
-Note: The generated `openapi_server` and `wgslim_api_client` packages must be installed in editable mode to be importable in your Python code. The `--config-settings editable_mode=compat` flag ensures pyright can resolve the types (uses legacy path-based editable install instead of PEP 660 finder). In production (Docker), these are installed automatically during the build process.
+Note: The generated `openapi_server` and `wgslim_api_client` packages must be installed to be importable in your Python code; `make install-generated` does that. Rerun it after regenerating. Codegen is skipped when `openapi.yaml` has not changed since the last run — use `make openapi-clean openapi` to force a full rebuild. In production (Docker), all of this happens during the build.
 
 ### 3. Run tests
 

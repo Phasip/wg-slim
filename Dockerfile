@@ -56,10 +56,8 @@ RUN pip3 install --no-cache-dir --break-system-packages -r /app/requirements-bui
 COPY . /app/
 # Update VERSION variable in wg_api.py with git hash and build date
 RUN sed -i "s/VERSION = \"dev build dev\"/VERSION = \"$(git rev-parse --short HEAD 2>/dev/null || echo 'unknown') build $(date -u +%Y-%m-%d)\"/" /app/wg_api.py
-RUN rm -rf openapi_generated static/js/openapi-client.js
-RUN make openapi-client
-RUN make openapi-server
-RUN make openapi-python-client
+RUN make openapi-clean
+RUN make openapi
 
 FROM base AS full
 COPY --from=dev /app/*.py /app/
