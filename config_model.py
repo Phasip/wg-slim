@@ -7,28 +7,19 @@ import os
 import re
 import tempfile
 import threading
-import sys
 from ipaddress import IPv4Address, IPv6Address, ip_address, ip_network
 from typing import Any, Callable, Optional
 
-import pyqrcode
-import io
 import yaml
 from yaml.nodes import Node
 import wg_utils
 from wg_manager import WgManager
 from pydantic import ValidationError as PydanticValidationError
 
-HERE = os.path.abspath(os.path.dirname(__file__))
-GEN_SRC = os.path.join(HERE, "openapi_generated", "python-fastapi", "src")
-if GEN_SRC not in sys.path:
-    sys.path.insert(0, GEN_SRC)
-
-# disable e402: module level import not at top of file
-from openapi_server.models.config_basic import ConfigBasic  # noqa: E402
-from openapi_server.models.server import Server  # noqa: E402
-from openapi_server.models.peer import Peer  # noqa: E402
-from openapi_server.models.wire_guard_config import WireGuardConfig  # noqa: E402
+# `openapi_server` is generated from openapi.yaml into openapi_generated/ and
+# installed by `make install-generated` (run for you by `make test`).
+from openapi_server.models.peer import Peer
+from openapi_server.models.wire_guard_config import WireGuardConfig
 
 logger = logging.getLogger(__name__)
 
@@ -182,13 +173,9 @@ class SyncedConfigManager:
     def _load(self) -> None:
         with open(self.file_path) as f:
             data = yaml.safe_load(f)
-        cfg = WireGuardConfig.model_validate(data)
-
-        cfg.basic = ConfigBasic.model_validate(cfg.basic)
-        cfg.server = Server.model_validate(cfg.server)
-        cfg.peers = [Peer.model_validate(p) for p in cfg.peers]
-
-        self._config = cfg
+        # WireGuardConfig declares `basic`/`server`/`peers` as model types, so
+        # pydantic validates the nested sections as part of this call.
+        self._config = WireGuardConfig.model_validate(data)
         logger.info("Loaded config from %s", self.file_path)
 
     def _validate_invariants(self) -> None:
@@ -441,20 +428,6 @@ class SyncedConfigManager:
 
         return merged, comment
 
-    def generate_peer_qrcode(self, name: str) -> bytes:
-        buf = io.BytesIO()
-        pyqrcode.create(self.get_peer_config_string(name)).png(buf, scale=6)  # type: ignore
-        return buf.getvalue()
-
-    def get_log_file_path(self) -> str:
-        """Return the path to the logfile located next to the config file.
-
-        The logfile is named `logs.log` and lives in the same directory as
-        `self.file_path`.
-        """
-        base_dir = os.path.dirname(self.file_path)
-        return os.path.join(base_dir, "logs.log")
-
     def get_raw_config(self, censor_password: bool = False) -> str:
         data = self._config.model_dump()
         if censor_password:
@@ -472,21 +445,10 @@ class SyncedConfigManager:
                     _require_mapping(basic, "Config is missing a 'basic' section")
                     basic["password"] = self._config.basic.password
 
-                cfg = WireGuardConfig.model_validate(data)
-
-                # Ensure nested fields are validated to generated model types
-                cfg.basic = ConfigBasic.model_validate(cfg.basic)
-                cfg.server = Server.model_validate(cfg.server)
-                cfg.peers = [Peer.model_validate(p) for p in cfg.peers]
-
-                # Ensure that a peer matching server.name exists
-                try:
-                    _ = next(p for p in cfg.peers if p.name == cfg.server.name)
-                except StopIteration:
-                    raise ConfigValidationError(f"Server name '{cfg.server.name}' must match an existing peer") from None
-
-                # Persist the new validated config; no per-object callbacks
-                self._config = cfg
+                # Persist the new config; `save()` enforces the structural
+                # invariants (unique peer names, a peer named after the server)
+                # and reloads the last good config if anything rejects it.
+                self._config = WireGuardConfig.model_validate(data)
                 self.save()
             except (PydanticValidationError, ValueError):
                 self._config = old

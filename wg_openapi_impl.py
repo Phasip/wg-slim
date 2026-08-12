@@ -14,7 +14,6 @@ import logging
 
 import wg_manager
 import config_model
-from config_model import DontKnowPeersPrivatekey, ConfigSyncException
 import wg_api
 
 from fastapi import HTTPException, Response, FastAPI
@@ -42,6 +41,8 @@ from openapi_server.models.update_all_peers_post_request import UpdateAllPeersPo
 
 logger = logging.getLogger(__name__)
 
+# Number of trailing log lines returned by `GET /server/logs`.
+LOG_TAIL_LINES = 1000
 
 app_instance: FastAPI | None = None
 
@@ -61,10 +62,13 @@ class DefaultApiImpl(BaseDefaultApi):
     Exception handling is intentionally narrow: ImportErrors are not
     swallowed, and only expected runtime errors are converted into
     HTTPException responses so unexpected failures surface during
-    development or CI.
+    development or CI. Domain exceptions (`ConfigSyncException`,
+    `DontKnowPeersPrivatekey`, `PeerNotFoundException`, ...) are mapped to
+    status codes centrally in `wg_api.create_app`, so handlers let them
+    propagate instead of translating each one.
     """
 
-    async def api_login_post(self, login_request: LoginRequest | None) -> LoginPost200Response:
+    async def login_post(self, login_request: LoginRequest | None) -> LoginPost200Response:
         if login_request is None:
             raise HTTPException(status_code=400, detail="Missing login request body")
 
@@ -91,9 +95,6 @@ class DefaultApiImpl(BaseDefaultApi):
         token = wg_api.create_access_token(app=_get_app())
         return LoginPost200Response(access_token=token, token_type="bearer")
 
-    async def login_post(self, login_request: LoginRequest | None) -> LoginPost200Response:
-        return await self.api_login_post(login_request)
-
     async def logout_get(self) -> Success:
         wg_api.revoke_active_token(app=_get_app())
         return Success(message="logged out")
@@ -106,15 +107,11 @@ class DefaultApiImpl(BaseDefaultApi):
     async def server_yaml_put(self, server_yaml_put_request: ServerYamlPutRequest | None) -> None:
         if server_yaml_put_request is None:
             raise HTTPException(status_code=400, detail="Missing server yaml body")
-        yaml_content = server_yaml_put_request.yaml
 
         cfg = get_cm()
         server_peer = config_model.get_peer(cfg.config, cfg.config.server.name)
-        config_model.ConfigHelper.update_from_yaml(server_peer, yaml_content)
-        try:
-            cfg.save()
-        except ConfigSyncException as e:
-            raise HTTPException(status_code=400, detail=str(e)) from None
+        config_model.ConfigHelper.update_from_yaml(server_peer, server_yaml_put_request.yaml)
+        cfg.save()
         return None
 
     async def server_status_get(self) -> ServerStatus:
@@ -132,15 +129,12 @@ class DefaultApiImpl(BaseDefaultApi):
         return Server(name=s.name, interface_name=s.interface_name)
 
     async def server_logs_get(self) -> ServerLogsResponse:
-        cfg = get_cm()
-        log_file = cfg.get_log_file_path()
+        log_file = wg_utils.log_file_path(get_cm().file_path)
         if not os.path.exists(log_file):
             return ServerLogsResponse(logs=[])
         with open(log_file, "r", encoding="utf-8") as f:
             lines = f.readlines()
-        limit_int = 1000
-        tail = lines[-limit_int:] if limit_int > 0 else []
-        return ServerLogsResponse(logs=[line.rstrip("\n") for line in tail])
+        return ServerLogsResponse(logs=[line.rstrip("\n") for line in lines[-LOG_TAIL_LINES:]])
 
     async def server_logs_delete(self) -> Success:
         handler = _get_app().state.log_handler
@@ -153,18 +147,17 @@ class DefaultApiImpl(BaseDefaultApi):
         return Success(message="")
 
     async def wg_show_get(self) -> dict[str, str] | None:
-        app = _get_app()
-        interface = app.state.config_manager.config.server.interface_name
-        blocks = wg_manager.WgManager.get_wg_show_peer_blocks(interface)
+        cfg = get_cm().config
+        blocks = wg_manager.WgManager.get_wg_show_peer_blocks(cfg.server.interface_name)
         result: dict[str, str] = {}
 
-        for p in app.state.config_manager.config.peers:
+        for p in cfg.peers:
             # A peer edited through the API may lack a PublicKey; that must not
             # break `wg show` for every other peer.
             pub = wg_utils.parse_wg_section(p.as_peer).get("PublicKey")
             if pub and pub in blocks:
                 result[p.name] = blocks[pub]
-            elif p.name == app.state.config_manager.config.server.name:
+            elif p.name == cfg.server.name:
                 result[p.name] = "[Peer is active server]"
             else:
                 result[p.name] = "[Peer inactive in WireGuard]"
@@ -182,59 +175,37 @@ class DefaultApiImpl(BaseDefaultApi):
         if not name:
             raise HTTPException(status_code=400, detail="Missing peer name")
 
-        try:
-            peer = get_cm().add_peer(name)
-        except ConfigSyncException as e:
-            raise HTTPException(status_code=400, detail=str(e)) from None
+        peer = get_cm().add_peer(name)
         return JSONResponse(status_code=201, content=peer.model_dump())
 
     async def peers_peer_name_delete(self, peer_name: str) -> None:
-        try:
-            get_cm().remove_peer(peer_name)
-        except ConfigSyncException as e:
-            raise HTTPException(status_code=400, detail=str(e)) from None
+        get_cm().remove_peer(peer_name)
         return None
 
     async def peers_peer_name_config_get(self, peer_name: str) -> ConfigResponse:
-        try:
-            cfg = get_cm().get_peer_config_string(peer_name)
-        except DontKnowPeersPrivatekey as e:
-            raise HTTPException(status_code=400, detail=str(e)) from None
-        return ConfigResponse(config=cfg)
+        return ConfigResponse(config=get_cm().get_peer_config_string(peer_name))
 
     async def peers_peer_name_qr_get(self, peer_name: str) -> Response:
-        try:
-            data = get_cm().generate_peer_qrcode(peer_name)
-        except DontKnowPeersPrivatekey as e:
-            raise HTTPException(status_code=400, detail=str(e)) from None
-        return Response(content=data, media_type="image/png")
+        png = wg_utils.render_qrcode_png(get_cm().get_peer_config_string(peer_name))
+        return Response(content=png, media_type="image/png")
 
     async def peers_peer_name_regenerate_key_post(self, peer_name: str) -> Success:
-        try:
-            get_cm().regenerate_key(peer_name)
-        except ConfigSyncException as e:
-            raise HTTPException(status_code=400, detail=str(e)) from None
+        get_cm().regenerate_key(peer_name)
         return Success(message="")
 
     async def peers_peer_name_enable_post(self, peer_name: str) -> None:
-        cfg = get_cm()
-        peer = config_model.get_peer(cfg.config, peer_name)
-        peer.enabled = True
-        try:
-            cfg.save()
-        except ConfigSyncException as e:
-            raise HTTPException(status_code=400, detail=str(e)) from None
+        self._set_peer_enabled(peer_name, True)
         return None
 
     async def peers_peer_name_disable_post(self, peer_name: str) -> None:
-        cfg = get_cm()
-        peer = config_model.get_peer(cfg.config, peer_name)
-        peer.enabled = False
-        try:
-            cfg.save()
-        except ConfigSyncException as e:
-            raise HTTPException(status_code=400, detail=str(e)) from None
+        self._set_peer_enabled(peer_name, False)
         return None
+
+    @staticmethod
+    def _set_peer_enabled(peer_name: str, enabled: bool) -> None:
+        cfg = get_cm()
+        config_model.get_peer(cfg.config, peer_name).enabled = enabled
+        cfg.save()
 
     async def config_get(self) -> ConfigResponse:
         raw = get_cm().get_raw_config(censor_password=True)
@@ -243,11 +214,7 @@ class DefaultApiImpl(BaseDefaultApi):
     async def config_put(self, config_put_request: ConfigPutRequest | None) -> Success:
         if config_put_request is None:
             raise HTTPException(status_code=400, detail="Missing config put body")
-        content = config_put_request.yaml
-        try:
-            get_cm().set_raw_config(content, ignore_password=True)
-        except ConfigSyncException as e:
-            raise HTTPException(status_code=400, detail=str(e)) from None
+        get_cm().set_raw_config(config_put_request.yaml, ignore_password=True)
         return Success(message="")
 
     async def config_import_wg_post(self, config_import_wg_post_request: ConfigImportWgPostRequest | None) -> Success:
@@ -260,17 +227,9 @@ class DefaultApiImpl(BaseDefaultApi):
             raise HTTPException(status_code=400, detail="Importing WireGuard configs is only supported when no peers exist except the server peer")
 
         parsed = config_model.parse_wg_conf(wg_conf, endpoint)
-        cm.config.server = config_model.Server.model_validate(parsed["server"])
-        cm.config.peers = []
-
-        for p in parsed["peers"]:
-            peer = config_model.Peer.model_validate(p)
-            cm.config.peers.append(peer)
-
-        try:
-            cm.save()
-        except ConfigSyncException as e:
-            raise HTTPException(status_code=400, detail=str(e)) from None
+        cm.config.server = Server.model_validate(parsed["server"])
+        cm.config.peers = [Peer.model_validate(p) for p in parsed["peers"]]
+        cm.save()
 
         return Success(message="")
 
@@ -290,10 +249,7 @@ class DefaultApiImpl(BaseDefaultApi):
             raise HTTPException(status_code=403, detail="Invalid password")
 
         cfg.config.basic.password = new_pw
-        try:
-            cfg.save()
-        except ConfigSyncException as e:
-            raise HTTPException(status_code=400, detail=str(e)) from None
+        cfg.save()
 
         # The old password is gone; any session created with it must go too.
         # The caller keeps its own token - it just proved it knows the password.
@@ -308,24 +264,13 @@ class DefaultApiImpl(BaseDefaultApi):
     async def peers_peer_name_yaml_put(self, peer_name: str, peers_peer_name_yaml_put_request: PeersPeerNameYamlPutRequest | None) -> None:
         if peers_peer_name_yaml_put_request is None:
             raise HTTPException(status_code=400, detail="Missing peers yaml body")
-        yaml_content = peers_peer_name_yaml_put_request.yaml
-
-        try:
-            get_cm().update_peer_from_yaml(peer_name, yaml_content)
-        except ConfigSyncException as e:
-            raise HTTPException(status_code=400, detail=str(e)) from None
+        get_cm().update_peer_from_yaml(peer_name, peers_peer_name_yaml_put_request.yaml)
         return None
 
     async def update_all_peers_post(self, update_all_peers_post_request: UpdateAllPeersPostRequest) -> None:
         if update_all_peers_post_request is None:
             raise HTTPException(status_code=400, detail="Missing body")
-        template_name = update_all_peers_post_request.template_peer
-
-        cfg = get_cm()
-        try:
-            cfg.apply_template_to_peers(template_name)
-        except ConfigSyncException as e:
-            raise HTTPException(status_code=400, detail=str(e)) from None
+        get_cm().apply_template_to_peers(update_all_peers_post_request.template_peer)
         return None
 
     async def health_get(self) -> dict[str, str]:

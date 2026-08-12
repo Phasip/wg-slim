@@ -17,7 +17,7 @@ from starlette.staticfiles import StaticFiles
 from config_model import SyncedConfigManager
 from wg_sync_service import WgConfigSyncService
 from fw_sync_service import FwRulesSyncService
-from config_model import ConfigValidationError, PeerNotFoundException, PeerExistsException
+from config_model import ConfigValidationError, PeerNotFoundException, PeerExistsException, ConfigSyncException, DontKnowPeersPrivatekey
 from pydantic_core._pydantic_core import ValidationError as PydanticCoreValidationError
 from pydantic import ValidationError as PydanticValidationError
 from fastapi import FastAPI
@@ -133,6 +133,11 @@ async def _get_token_bearerAuth(request: Request):
         raise FastAPIHTTPException(status_code=401, detail="Authentication required")
 
     token_in = auth.split(" ", 1)[1]
+    # Deliberately a linear scan with secure_strcmp rather than a dict lookup.
+    # Hashing the presented token to index a dict leaks, through timing, how
+    # much of a guess matched a real token. Do not "optimize" this to
+    # `active_tokens.get(token_in)`. The table only holds live sessions, so the
+    # loop is short.
     for active_token, expiry in request.app.state.active_tokens.items():
         if wg_utils.secure_strcmp(token_in, active_token) and datetime.now(timezone.utc) <= expiry:
             request.app.state.active_tokens[active_token] = datetime.now(timezone.utc) + TOKEN_TTL
@@ -157,7 +162,7 @@ def create_app(sync_service: WgConfigSyncService | None = None, config_file: str
     if bool(st.st_mode & stat.S_IWOTH):
         logger.warning("Config file %s is world-writable; set permissions to 600 to protect secrets", config_file)
 
-    log_file = _config_manager.get_log_file_path()
+    log_file = wg_utils.log_file_path(_config_manager.file_path)
     _log_handler = logging.FileHandler(log_file)
     try:
         # The log sits next to the config and records client IPs and user agents.
@@ -216,8 +221,12 @@ def create_app(sync_service: WgConfigSyncService | None = None, config_file: str
 
         return response
 
+    # Insertion order matters: `_unified_exception_handler` returns the first
+    # matching entry, so the catch-all `Exception` stays last.
     exception_mappings: dict[type[Exception], int] = {
         ConfigValidationError: 400,
+        ConfigSyncException: 400,
+        DontKnowPeersPrivatekey: 400,
         PeerNotFoundException: 404,
         PeerExistsException: 409,
         PydanticCoreValidationError: 400,

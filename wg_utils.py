@@ -4,8 +4,12 @@ This module contains helper functions for WireGuard operations
 like key generation and config section parsing.
 """
 
+import io
+import os
 import secrets
 from typing import Dict, Iterator, Tuple
+
+import pyqrcode
 
 
 # List of known WireGuard keys in canonical casing
@@ -61,6 +65,12 @@ class WireguardDict:
 
     def __delitem__(self, key: str) -> None:
         del self.data[key.lower()]
+
+    def __contains__(self, key: str) -> bool:
+        # Without this, `in` falls back to __iter__, which only case-corrects
+        # keys listed in KNOWN_WG_KEYS - so `"FwMark" in d` would miss a stored
+        # `fwmark`.
+        return key.lower() in self.data
 
     def copy(self) -> "WireguardDict":
         d = WireguardDict()
@@ -124,3 +134,15 @@ def generate_random_password(length=16) -> str:
 def secure_strcmp(a: str, b: str) -> bool:
     """Compare two strings in a timing-attack resistant manner."""
     return secrets.compare_digest(a.encode("utf-8"), b.encode("utf-8"))
+
+
+def render_qrcode_png(content: str) -> bytes:
+    """Render `content` as a PNG QR code."""
+    buf = io.BytesIO()
+    pyqrcode.create(content).png(buf, scale=6)  # type: ignore
+    return buf.getvalue()
+
+
+def log_file_path(config_file_path: str) -> str:
+    """Return the path of the logfile that sits next to the config file."""
+    return os.path.join(os.path.dirname(config_file_path), "logs.log")
