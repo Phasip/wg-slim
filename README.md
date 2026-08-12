@@ -72,7 +72,9 @@ Converter scripts (for migration from other systems): `converters/`
 
   Client names are sanitized to the peer name rules (`^[A-Za-z0-9_-]{1,64}$`) and de-duplicated. A per-client `allowedIPs` field (used by wg-easy forks for site-to-site peers) is appended to that peer's `as_peer` AllowedIPs after its own `/32`, i.e. it is read as "networks routed *to* this peer".
 
-- `converters/from_wg_conf.py` — plain `wg0.conf` importer and `converters/from_wgeasy_sqlite.py` — wg-easy sqlite importer. Note: these two are untested and probably broken.
+- Plain `wg0.conf` import is built into the API — no script needed. `POST /api/config/import-wg` with the file contents and an endpoint, or use the "Import" action in the web UI. It is only accepted while the config still has just the server peer.
+
+- `converters/from_wgeasy_sqlite.py` — wg-easy sqlite importer. Note: untested and probably broken.
 
 ## Development
 
