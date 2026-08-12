@@ -177,11 +177,6 @@ def config_for_test_client(tmp_path):
 
 
 @pytest.fixture
-def base_url(wg_slim_container):
-    raise ValueError("The `base_url` fixture has been renamed to `container_simple`. Please update your tests accordingly.")
-
-
-@pytest.fixture
 def container_simple(wg_slim_container):
     return wg_slim_container["base_url"]
 
