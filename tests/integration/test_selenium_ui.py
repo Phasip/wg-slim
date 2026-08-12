@@ -66,17 +66,22 @@ def create_test_config(tmpdir):
 server:
   name: server
   interface_name: wg0
-  interface: |
-    Address = 10.0.0.1/24
-    ListenPort = 51820
-    PrivateKey = WEkjVLbCGf8hShZ0ZGMpTHvXhCKt+myLRGneVFnNqk4=
-    DNS = 1.1.1.1
-  as_peer: |
-    PublicKey = aFcrala5TI5GAAS5kNwXg1YR+jPkKVB8WchLQqzfyG8=
-    Endpoint = vpn.example.com:51820
-    AllowedIPs = 0.0.0.0/0
 
 peers:
+  # The server's own interface lives in the peer named after `server.name`.
+  # `Server` in openapi.yaml has additionalProperties: false, so inline
+  # `interface`/`as_peer` keys under `server:` are silently dropped and every
+  # save then fails the "server.name must match an existing peer" invariant.
+  - name: server
+    interface: |
+      Address = 10.0.0.1/24
+      ListenPort = 51820
+      PrivateKey = WEkjVLbCGf8hShZ0ZGMpTHvXhCKt+myLRGneVFnNqk4=
+      DNS = 1.1.1.1
+    as_peer: |
+      PublicKey = aFcrala5TI5GAAS5kNwXg1YR+jPkKVB8WchLQqzfyG8=
+      Endpoint = vpn.example.com:51820
+      AllowedIPs = 0.0.0.0/0
   - name: test-peer
     interface: |
       Address = 10.0.0.2/32
@@ -426,7 +431,12 @@ class TestPeerManagement:
 
         try:
             peer_btn = browser.find_element(By.CSS_SELECTOR, f"[data-peer='{peer_name}']")
-            peer_card = peer_btn.find_element(By.XPATH, "./ancestor::div[contains(@class, 'card')]")
+            # Scope to this peer's own wrapper. The whole peer list sits inside
+            # a page-level `<div class="card">`, and XPath `ancestor::` yields
+            # the OUTERMOST match, so `ancestor::div[contains(@class,'card')]`
+            # selected that page card and read the first peer's badge instead
+            # of this one's.
+            peer_card = peer_btn.find_element(By.XPATH, "./ancestor::div[contains(@class, 'peer-item')]")
             badge = peer_card.find_element(By.CSS_SELECTOR, ".badge")
             return badge.text
         except StaleElementReferenceException:
