@@ -3,10 +3,19 @@ line-length = 256
 exclude = ["tests", ".venv", "openapi_generated", "test_environment", "data"]
 
 [tool.ruff.lint]
-extend-select =  ["E", "F", "W", "B"]
+# `select`, not `extend-select`: extend-select adds to whatever ruff's defaults
+# happen to be, and those grew enough between versions that an unpinned ruff
+# started enabling ~450 rules (isort, pyupgrade, flake8-simplify, ...) and
+# failing the build. This pins the rule set to exactly what we intend.
+select = ["E", "F", "W", "B"]
 
 [tool.pyright]
-executionEnvironments = [{root = "${workspaceFolder}", pythonVersion = "3.10" }]
+# `${workspaceFolder}` is a VS Code variable that the pyright CLI does not
+# expand, so the CLI silently got a bogus execution-environment root.
+# The interpreter is not pinned here on purpose: it differs between a local
+# .venv and CI's system python. `tests/test_lint.py` passes `--pythonpath` so
+# pyright always resolves `openapi_server` from the interpreter running pytest.
+executionEnvironments = [{root = ".", pythonVersion = "3.10" }]
 include = ["."]
 exclude = ["tests", ".venv", "openapi_generated", "test_environment", "data"]
 reportMissingImports = true
@@ -32,4 +41,7 @@ filterwarnings = [
 # Caused by the use of uvicorn
 	"ignore:websockets.server.WebSocketServerProtocol is deprecated:DeprecationWarning:uvicorn.*",
 	"ignore:websockets.legacy is deprecated; see.*:DeprecationWarning:websockets.*",
+# Caused by anyio's cancel-scope implementation, still present as of anyio 4.14.2
+	"ignore:Passing 'msg' argument to Task.cancel\\(\\) is deprecated:DeprecationWarning",
+	"ignore:Passing 'msg' argument to Future.cancel\\(\\) is deprecated:DeprecationWarning",
 ]

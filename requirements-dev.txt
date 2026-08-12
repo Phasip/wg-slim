@@ -9,3 +9,9 @@ ruff
 schemathesis
 docker
 pyright
+# Required by fastapi's TestClient. Previously arrived only as a transitive
+# dependency of the generated package's fastapi[all]; listed here so the
+# generated packages can be installed with --no-deps.
+httpx
+# starlette's TestClient prefers httpx2 over httpx and warns when it's missing.
+httpx2
