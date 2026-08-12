@@ -1,11 +1,10 @@
-import os
 import tempfile
 import shutil
 import uuid
 import requests
 import re
 
-from conftest import run_container, free_port_tcp, free_port_udp, wait_for_healthcheck, PROJECT_ROOT
+from conftest import run_container, free_port_tcp, free_port_udp, wait_for_healthcheck
 
 
 def test_start_container_without_config(docker_image, docker_network):
@@ -21,10 +20,7 @@ def test_start_container_without_config(docker_image, docker_network):
     tmpdir = tempfile.mkdtemp()
 
     ports = {"5000/tcp": web_port, "51820/udp": wg_port}
-    if os.environ.get("DOCKER_TEST_BUILD_FULL_TARGET"):
-        volumes = {tmpdir: {"bind": "/data", "mode": "rw"}}
-    else:
-        volumes = {tmpdir: {"bind": "/data", "mode": "rw"}, PROJECT_ROOT: {"bind": "/app", "mode": "rw"}}
+    volumes = {tmpdir: {"bind": "/data", "mode": "rw"}}
 
     with run_container(
         docker_image,

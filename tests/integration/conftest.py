@@ -17,14 +17,14 @@ from pathlib import Path
 import pytest
 import requests
 import docker
+import xdist
 from contextlib import contextmanager
 from types import SimpleNamespace
 from config_model import SyncedConfigManager
 
 
-# MultiLock to coordinate image builds across xdist workers, takes a folder and worker name as argument.
-# Folder is filled with master lock and worker locks, first one to create master lock becomes builder
-# Last one to remove worker lock becomes destroyer
+# Simple flock-based mutex, used both as a plain lock and (via the returned
+# file handle) as small persistent storage for coordinating xdist workers.
 class FileLock:
     def __init__(self, lock_path: str):
         self.fd = os.open(lock_path, os.O_CREAT | os.O_RDWR)
@@ -41,45 +41,63 @@ class FileLock:
         self.f.close()
 
 
-# Synchronization lock that ensures all lockers will finish unlocking at the same time
-# Additionally provides is_first == True boolean to the first locker
-class MultiFileLock:
-    def __init__(self, state_path: str, worker_name: str):
-        self.worker_name = worker_name
-        self.state_path = state_path
-
-    def __enter__(self):
-        with FileLock(self.state_path) as f:
-            data = f.read().splitlines()
-            assert self.worker_name not in data  # Sanity check that we are not reusing broken state
-            is_first = len(data) == 0
-            if not is_first:
-                f.write("\n")  # ensure newline before appending
-            f.write(f"{self.worker_name}")
-        return is_first
-
-    def __exit__(self, exc_type, exc_value, traceback):
-        with FileLock(self.state_path) as f:
-            data = f.read().splitlines()
-            # Raise exception if the state file has been corrupted
-            assert self.worker_name in data
-            data.remove(self.worker_name)
-            if len(data) == 0:
-                os.remove(self.state_path)
-            else:
-                f.seek(0)
-                f.write("\n".join(data))
-                f.truncate()  # Truncate last so we could poll for file size zero and never remove the file
-
-        # Wait for all workers to unlock
-        while os.path.exists(self.state_path):
-            time.sleep(0.5)
-
-
 PROJECT_ROOT = str(Path(__file__).resolve().parents[2])
 IMAGE_NAME = "wg-slim-test:latest"
 CONTAINER_PREFIX = "wg-slim-server-"
 NETWORK_PREFIX = "wg-test-network-"
+
+# Shared Docker image lifecycle across xdist workers.
+#
+# Building the `full` target takes real time, so it is built once and reused
+# by every worker. Previously this was coordinated by having the first
+# worker to *arrive* at the fixture build, and the last to *leave* remove it
+# -- but pytest fixtures are lazy, so a worker whose first Docker-dependent
+# test happens to run late doesn't register until then. That let an earlier
+# cohort finish its own round and delete the image (or leave a stale
+# lockfile) before the late worker ever used it, causing spurious rebuilds
+# and "No such image" failures under `-n auto`.
+#
+# Fixed by decoupling the two concerns:
+#  - Building is a plain idempotent, lock-guarded "build if missing" -- order
+#    of arrival doesn't matter.
+#  - Removal is gated by a countdown seeded from PYTEST_XDIST_WORKER_COUNT,
+#    the true fixed number of workers for this run (set by pytest-xdist
+#    itself), decremented from `pytest_sessionfinish`. Unlike a fixture, that
+#    hook fires for every worker unconditionally, whether or not it ever
+#    touched a Docker test, so the count can't be thrown off by workers that
+#    show up (or never show up) to the fixture at different times.
+_LOCK_DIR = tempfile.gettempdir()
+_IMAGE_BUILD_LOCK = os.path.join(_LOCK_DIR, "wg-slim-build.lock")
+_IMAGE_REFCOUNT_LOCK = os.path.join(_LOCK_DIR, "wg-slim-rm.lock")
+
+
+def _worker_count():
+    return int(os.environ.get("PYTEST_XDIST_WORKER_COUNT", "1"))
+
+
+def pytest_sessionfinish(session, exitstatus):
+    """Remove the shared test image once every worker has finished with it.
+
+    The xdist controller process runs this hook too, but never executes any
+    tests or uses `docker_image` itself -- only the actual workers (or, in a
+    non-distributed run, the single process) count toward the countdown.
+    """
+    if xdist.is_xdist_controller(session):
+        return
+    with FileLock(_IMAGE_REFCOUNT_LOCK) as f:
+        raw = f.read().strip()
+        remaining = (int(raw) if raw else _worker_count()) - 1
+        f.seek(0)
+        f.write(str(remaining))
+        f.truncate()
+    if remaining <= 0:
+        os.remove(_IMAGE_REFCOUNT_LOCK)
+        client = get_docker_client()
+        try:
+            client.images.remove(image=IMAGE_NAME, force=True)
+            client.images.prune()
+        except docker.errors.ImageNotFound:
+            pass
 
 
 def get_docker_client():
@@ -103,12 +121,6 @@ def run_container(*args, **kwargs):
     finally:
         container.stop()
         container.remove(force=True)
-
-
-# def pytest_configure(config):
-#    master = hasattr(config, "workerinput")
-#    if master:
-#        # TODO
 
 
 def free_port_tcp():
@@ -171,21 +183,13 @@ def run_command_in_container(container, command):
 @pytest.fixture(scope="session")
 def docker_image():
     client = get_docker_client()
-    worker_id = os.environ.get("PYTEST_XDIST_WORKER", "gw0")
-    lock_dir = tempfile.gettempdir()
-    bl = MultiFileLock(os.path.join(lock_dir, "wg-slim-build.lock"), worker_id)
-    dl = MultiFileLock(os.path.join(lock_dir, "wg-slim-rm.lock"), worker_id)
-    target = "full" if os.environ.get("DOCKER_TEST_BUILD_FULL_TARGET") else "base"
-    with dl as is_destroyer:
-        with bl as is_builder:
-            if is_builder:
-                client.images.build(path=PROJECT_ROOT, tag=IMAGE_NAME, rm=True, target=target)
-        # All exit at same time, so image is built
-        yield IMAGE_NAME
-    # All exit at the same time, so all workers are done
-    if is_destroyer:
-        client.images.remove(image=IMAGE_NAME, force=True)
-        client.images.prune()
+    with FileLock(_IMAGE_BUILD_LOCK):
+        try:
+            client.images.get(IMAGE_NAME)
+        except docker.errors.ImageNotFound:
+            client.images.build(path=PROJECT_ROOT, tag=IMAGE_NAME, rm=True, target="full")
+    yield IMAGE_NAME
+    # Removal is handled by `pytest_sessionfinish`, once every worker is done.
 
 
 @pytest.fixture
@@ -207,10 +211,7 @@ def wg_slim_container(docker_image, docker_network):
     tmpdir = tempfile.mkdtemp()
 
     ports = {"5000/tcp": web_port, "51820/udp": wg_port}
-    if os.environ.get("DOCKER_TEST_BUILD_FULL_TARGET"):
-        volumes = {tmpdir: {"bind": "/data", "mode": "rw"}}
-    else:
-        volumes = {tmpdir: {"bind": "/data", "mode": "rw"}, PROJECT_ROOT: {"bind": "/app", "mode": "rw"}}
+    volumes = {tmpdir: {"bind": "/data", "mode": "rw"}}
 
     # Produce a complete initial config and pass as YAML text via INITIAL_CONFIG
     # Use the load_or_create method to create the config
