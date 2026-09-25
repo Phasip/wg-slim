@@ -222,10 +222,14 @@ class SyncedConfigManager:
             # leaves the in-memory config half-changed, so reload the last good
             # config from disk before the exception propagates.
             completed = False
+            watchers_run = 0
             try:
                 self._validate_invariants()
                 # Call watchers before writing to disk; short-circuit on first failure
                 for watcher in self._on_config_change:
+                    # Counted before the call: a failing watcher may have
+                    # applied part of the change before it raised.
+                    watchers_run += 1
                     watcher()
                 # Write the configuration only after all watchers succeed
                 self._write_to_disk()
@@ -233,13 +237,30 @@ class SyncedConfigManager:
             finally:
                 if not completed:
                     self._load()
+                    self._reapply(self._on_config_change[:watchers_run])
             logger.info("Saved config to %s", self.file_path)
+
+    def _reapply(self, watchers: list[Callable[[], None]]) -> None:
+        """Re-run watchers against the reloaded config after a failed save.
+
+        Watchers change live state (the WireGuard interface, the firewall), so
+        when a later step fails, the ones that already ran would otherwise
+        leave the system running a config that was never saved. Runs inside a
+        `finally`, so failures are logged rather than raised: raising would
+        hide the error that aborted the save.
+        """
+        for watcher in watchers:
+            try:
+                watcher()
+            except ConfigSyncException as e:
+                logger.error("Could not restore the previous config after a failed save: %s", e)
 
     def add_on_config_change(self, callback: Callable[[], None]) -> None:
         """Register a callback invoked before the config is saved to disk.
 
         Callbacks are called in order. If any raises ConfigSyncException,
-        the save is aborted and the previous config is reloaded from disk.
+        the save is aborted, the previous config is reloaded from disk and the
+        callbacks that already ran are called again to re-apply it.
         """
         self._on_config_change.append(callback)
 

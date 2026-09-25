@@ -124,6 +124,35 @@ class TestSaveRollback:
         assert config_model.get_peer(manager.config, "alice").enabled is True
 
 
+    def test_watchers_that_ran_reapply_the_restored_config(self, manager):
+        """A watcher that applied the rejected change must see the old config again."""
+        seen = []
+        manager.add_on_config_change(lambda: seen.append(config_model.get_peer(manager.config, "alice").enabled))
+
+        def failing_watcher():
+            raise config_model.ConfigSyncException("nft failed")
+
+        manager.add_on_config_change(failing_watcher)
+        config_model.get_peer(manager.config, "alice").enabled = False
+
+        with pytest.raises(config_model.ConfigSyncException, match="nft failed"):
+            manager.save()
+
+        # Applied the change, then re-applied the restored config
+        assert seen == [False, True]
+
+    def test_reapply_failure_does_not_hide_original_error(self, manager):
+        def always_failing():
+            raise config_model.ConfigSyncException("wg failed")
+
+        manager.add_on_config_change(always_failing)
+        config_model.get_peer(manager.config, "alice").enabled = False
+
+        with pytest.raises(config_model.ConfigSyncException, match="wg failed"):
+            manager.save()
+        assert config_model.get_peer(manager.config, "alice").enabled is True
+
+
 class TestAtomicWrite:
     def test_config_is_written_atomically_with_private_mode(self, manager, tmp_path):
         os.remove(manager.file_path)
