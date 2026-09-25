@@ -54,7 +54,7 @@ Two rules are enforced on every save, and a config violating either is rejected 
 
 New peers get the next free address in the server's subnet, and take `DNS` and `MTU` from the peer marked `default: true` (by default the server peer). If that peer doesn't set them, `DNS = 1.1.1.1, 8.8.8.8` and `MTU = 1420` are used.
 
-Changes that only touch peers are applied live with `wg syncconf`. A change to the server peer's `interface` section (Address, MTU, DNS, Table, PostUp/PostDown, ...) restarts the WireGuard interface, which briefly interrupts the VPN.
+Changes that only touch peers are applied live with `wg syncconf`. A change to the server peer's `interface` section (Address, MTU, DNS, Table, PostUp/PostDown, ...) restarts the WireGuard interface. Connected clients lose the tunnel until their next handshake, typically about 15 seconds.
 
 ## Firewall rules
 
