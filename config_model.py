@@ -20,6 +20,7 @@ from pydantic import ValidationError as PydanticValidationError
 # `openapi_server` is generated from openapi.yaml into openapi_generated/ and
 # installed by `make install-generated` (run for you by `make test`).
 from openapi_server.models.peer import Peer
+from openapi_server.models.server import Server
 from openapi_server.models.wire_guard_config import WireGuardConfig
 
 logger = logging.getLogger(__name__)
@@ -178,7 +179,15 @@ class SyncedConfigManager:
 
     @property
     def config(self) -> WireGuardConfig:
+        """The live config. Only read or change it while holding the lock
+        (inside this class, or in a watcher, which runs under it); use
+        `snapshot()` elsewhere."""
         return self._config
+
+    def snapshot(self) -> WireGuardConfig:
+        """Return a deep copy of the config, safe to read without the lock."""
+        with self._lock:
+            return self._config.model_copy(deep=True)
 
     def _load(self) -> None:
         with open(self.file_path) as f:
@@ -369,12 +378,36 @@ class SyncedConfigManager:
             self.save()
 
     def regenerate_key(self, entity_name: str) -> None:
-        priv, pub = WgManager.generate_keypair()
-        target = get_peer(self._config, entity_name)
+        with self._lock:
+            target = get_peer(self._config, entity_name)
+            priv, pub = WgManager.generate_keypair()
 
-        ConfigHelper.set_interface_value(target, "PrivateKey", priv)
-        ConfigHelper.set_as_peer_value(target, "PublicKey", pub)
-        self.save()
+            ConfigHelper.set_interface_value(target, "PrivateKey", priv)
+            ConfigHelper.set_as_peer_value(target, "PublicKey", pub)
+            self.save()
+
+    def set_peer_enabled(self, peer_name: str, enabled: bool) -> None:
+        with self._lock:
+            get_peer(self._config, peer_name).enabled = enabled
+            self.save()
+
+    def get_peer_yaml(self, peer_name: str) -> str:
+        with self._lock:
+            return ConfigHelper.to_yaml(get_peer(self._config, peer_name))
+
+    def import_wg_config(self, wg_config: str, endpoint: str) -> None:
+        """Replace the server and peers with those parsed from a wg-quick config.
+
+        Only allowed while the server peer is the only peer, so an import can
+        never silently drop existing peers.
+        """
+        with self._lock:
+            if len(self._config.peers) != 1:
+                raise ConfigValidationError("Importing WireGuard configs is only supported when no peers exist except the server peer")
+            parsed = parse_wg_conf(wg_config, endpoint)
+            self._config.server = Server.model_validate(parsed["server"])
+            self._config.peers = [Peer.model_validate(p) for p in parsed["peers"]]
+            self.save()
 
     def update_peer_from_yaml(self, peer_name: str, yaml_content: str) -> None:
         """Update a peer from YAML and save the configuration."""
@@ -387,6 +420,11 @@ class SyncedConfigManager:
                 for p in self._config.peers:
                     p.default = p.name == peer.name
             self.save()
+
+    def update_server_from_yaml(self, yaml_content: str) -> None:
+        """Update the server's own peer from YAML and save the configuration."""
+        with self._lock:
+            self.update_peer_from_yaml(self._config.server.name, yaml_content)
 
     def generate_server_config(self, server_peer_name: str) -> str:
         """Generate a simple server config string for the named server peer.
@@ -435,6 +473,10 @@ class SyncedConfigManager:
             return rendered
 
     def get_peer_config_string(self, name: str) -> str:
+        with self._lock:
+            return self._peer_config_string(name)
+
+    def _peer_config_string(self, name: str) -> str:
         peer = get_peer(self._config, name)
 
         # Ensure we know this peer's private key before returning its config
@@ -508,7 +550,8 @@ class SyncedConfigManager:
         return data
 
     def get_raw_config(self, censor_password: bool = False) -> str:
-        data = self._dump()
+        with self._lock:
+            data = self._dump()
         if censor_password:
             # Only the configured field is shown, so the editor keeps
             # displaying which form is in use.

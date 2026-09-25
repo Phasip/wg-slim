@@ -153,6 +153,18 @@ class TestSaveRollback:
         assert config_model.get_peer(manager.config, "alice").enabled is True
 
 
+class TestLockedAccess:
+    def test_snapshot_is_a_copy(self, manager):
+        snap = manager.snapshot()
+        config_model.get_peer(snap, "alice").enabled = False
+        assert config_model.get_peer(manager.config, "alice").enabled is True
+
+    def test_import_refused_when_peers_exist(self, manager):
+        with pytest.raises(ConfigValidationError, match="only supported when no peers exist"):
+            manager.import_wg_config("[Interface]\nAddress = 10.0.0.1/24\nPrivateKey = K\n", "vpn:51820")
+        assert [p.name for p in manager.config.peers] == ["server", "alice"]
+
+
 class TestAtomicWrite:
     def test_config_is_written_atomically_with_private_mode(self, manager, tmp_path):
         os.remove(manager.file_path)

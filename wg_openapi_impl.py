@@ -109,22 +109,17 @@ class DefaultApiImpl(BaseDefaultApi):
 
     async def server_yaml_get(self) -> YamlResponse:
         cfg = get_cm()
-        server_peer = config_model.get_peer(cfg.config, cfg.config.server.name)
-        return YamlResponse(yaml=config_model.ConfigHelper.to_yaml(server_peer))
+        return YamlResponse(yaml=cfg.get_peer_yaml(cfg.snapshot().server.name))
 
     async def server_yaml_put(self, server_yaml_put_request: ServerYamlPutRequest | None) -> None:
         if server_yaml_put_request is None:
             raise HTTPException(status_code=400, detail="Missing server yaml body")
 
-        cfg = get_cm()
-        server_peer = config_model.get_peer(cfg.config, cfg.config.server.name)
-        config_model.ConfigHelper.update_from_yaml(server_peer, server_yaml_put_request.yaml)
-        cfg.save()
+        get_cm().update_server_from_yaml(server_yaml_put_request.yaml)
         return None
 
     async def server_status_get(self) -> ServerStatus:
-        cfg = get_cm()
-        interface = cfg.config.server.interface_name
+        interface = get_cm().snapshot().server.interface_name
         is_running = wg_manager.WgManager.is_interface_up(interface)
 
         if not is_running:
@@ -133,7 +128,7 @@ class DefaultApiImpl(BaseDefaultApi):
         return ServerStatus(status="up", interface=interface, is_running=True)
 
     async def server_get(self) -> Server:
-        s = get_cm().config.server
+        s = get_cm().snapshot().server
         return Server(name=s.name, interface_name=s.interface_name)
 
     async def server_logs_get(self) -> ServerLogsResponse:
@@ -160,7 +155,7 @@ class DefaultApiImpl(BaseDefaultApi):
         return Success(message="")
 
     async def wg_show_get(self) -> dict[str, str] | None:
-        cfg = get_cm().config
+        cfg = get_cm().snapshot()
         blocks = wg_manager.WgManager.get_wg_show_peer_blocks(cfg.server.interface_name)
         result: dict[str, str] = {}
 
@@ -178,7 +173,7 @@ class DefaultApiImpl(BaseDefaultApi):
         return result
 
     async def peers_get(self) -> PeersList:
-        peers = [Peer.model_validate(p.model_dump()) for p in get_cm().config.peers]
+        peers = [Peer.model_validate(p.model_dump()) for p in get_cm().snapshot().peers]
         return PeersList(peers=peers)
 
     async def peers_post(self, peers_post_request: PeersPostRequest | None) -> JSONResponse | None:
@@ -207,18 +202,12 @@ class DefaultApiImpl(BaseDefaultApi):
         return Success(message="")
 
     async def peers_peer_name_enable_post(self, peer_name: str) -> None:
-        self._set_peer_enabled(peer_name, True)
+        get_cm().set_peer_enabled(peer_name, True)
         return None
 
     async def peers_peer_name_disable_post(self, peer_name: str) -> None:
-        self._set_peer_enabled(peer_name, False)
+        get_cm().set_peer_enabled(peer_name, False)
         return None
-
-    @staticmethod
-    def _set_peer_enabled(peer_name: str, enabled: bool) -> None:
-        cfg = get_cm()
-        config_model.get_peer(cfg.config, peer_name).enabled = enabled
-        cfg.save()
 
     async def config_get(self) -> ConfigResponse:
         raw = get_cm().get_raw_config(censor_password=True)
@@ -233,16 +222,7 @@ class DefaultApiImpl(BaseDefaultApi):
     async def config_import_wg_post(self, config_import_wg_post_request: ConfigImportWgPostRequest | None) -> Success:
         if config_import_wg_post_request is None:
             raise HTTPException(status_code=400, detail="Missing import wg body")
-        wg_conf = config_import_wg_post_request.wg_config
-        endpoint = config_import_wg_post_request.endpoint
-        cm = get_cm()
-        if len(cm.config.peers) != 1:
-            raise HTTPException(status_code=400, detail="Importing WireGuard configs is only supported when no peers exist except the server peer")
-
-        parsed = config_model.parse_wg_conf(wg_conf, endpoint)
-        cm.config.server = Server.model_validate(parsed["server"])
-        cm.config.peers = [Peer.model_validate(p) for p in parsed["peers"]]
-        cm.save()
+        get_cm().import_wg_config(config_import_wg_post_request.wg_config, config_import_wg_post_request.endpoint)
 
         return Success(message="")
 
@@ -270,8 +250,7 @@ class DefaultApiImpl(BaseDefaultApi):
         return Success(message="")
 
     async def peers_peer_name_yaml_get(self, peer_name: str) -> YamlResponse:
-        peer = config_model.get_peer(get_cm().config, peer_name)
-        return YamlResponse(yaml=config_model.ConfigHelper.to_yaml(peer))
+        return YamlResponse(yaml=get_cm().get_peer_yaml(peer_name))
 
     async def peers_peer_name_yaml_put(self, peer_name: str, peers_peer_name_yaml_put_request: PeersPeerNameYamlPutRequest | None) -> None:
         if peers_peer_name_yaml_put_request is None:
