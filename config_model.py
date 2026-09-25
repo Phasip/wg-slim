@@ -458,7 +458,7 @@ class SyncedConfigManager:
                     content += f"\n[Peer]\n{wg_utils.build_wg_section(merged)}\n"
                     if conflict_comment:
                         content += f"# {conflict_comment}\n"
-                        logging.warning("Conflicting PresharedKey when generating server config for %s: keeping client's value", p.name)
+                        logger.warning("Conflicting PresharedKey when generating server config for %s: keeping client's value", p.name)
             return content
 
     def render_server_fw_rules(self) -> Optional[str]:
@@ -466,15 +466,13 @@ class SyncedConfigManager:
         variables and returning the resulting nftables ruleset as a string.
 
         Supported template variables:
-        - `{{AllowedIPs}}`: the server peer AllowedIPs value (first CIDR)
+        - `{{AllowedIPs}}`: the server peer's whole AllowedIPs value
         - `{{interface_name}}`: the configured server interface name
 
         Returns `None` when no `fw_rules` template is configured.
         """
         with self._lock:
-            # Use model_dump to avoid dynamic attribute access (forbidden by tests)
             fw = self._config.server.fw_rules
-            logger.info("fw_rules raw value: %r", fw)
             if not fw:
                 return None
 

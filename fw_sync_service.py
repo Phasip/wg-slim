@@ -49,7 +49,7 @@ class FwRulesSyncService:
 
         if rendered:
             wrapped += f"table {FAMILY} {TABLE} {{\n{rendered}\n}}\n"
-        logger.debug(f"Full fw ruleset: {wrapped}")
+        logger.debug("Full fw ruleset: %s", wrapped)
         try:
             with tempfile.NamedTemporaryFile(mode="w", delete=True) as tf:
                 tf.write(wrapped)
