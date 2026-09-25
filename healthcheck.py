@@ -24,11 +24,9 @@ def check() -> bool:
         data = yaml.safe_load(f)
 
     host, port = wg_utils.parse_bind_addr(str(data["basic"]["bind_addr"]))
-    # A wildcard bind is not a usable destination address.
-    if host in ("0.0.0.0", "::", ""):
-        host = "127.0.0.1"
+    url_host = wg_utils.local_url_host(host)
 
-    with urllib.request.urlopen(f"http://{host}:{port}/api/health", timeout=TIMEOUT_SECONDS) as response:
+    with urllib.request.urlopen(f"http://{url_host}:{port}/api/health", timeout=TIMEOUT_SECONDS) as response:
         if response.status != 200:
             return False
         payload = json.load(response)

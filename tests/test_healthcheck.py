@@ -18,6 +18,8 @@ import wg_utils
         (":5000", ("0.0.0.0", 5000)),
         ("0.0.0.0:5000", ("0.0.0.0", 5000)),
         ("127.0.0.1:8080", ("127.0.0.1", 8080)),
+        ("[::]:5000", ("::", 5000)),
+        ("[::1]:8080", ("::1", 8080)),
     ],
 )
 def test_parse_bind_addr(bind_addr, expected):
@@ -82,3 +84,17 @@ def test_healthcheck_fails_on_bad_status(tmp_path):
     module = _healthcheck(tmp_path)
     with patch("urllib.request.urlopen", return_value=_FakeResponse(status=503)):
         assert module.check() is False
+
+
+@pytest.mark.parametrize(
+    "bind_addr,url",
+    [
+        ("[::]:5000", "http://[::1]:5000/api/health"),
+        ("[fd00::1]:5000", "http://[fd00::1]:5000/api/health"),
+    ],
+)
+def test_healthcheck_ipv6_bind(tmp_path, bind_addr, url):
+    module = _healthcheck(tmp_path, bind_addr=bind_addr)
+    with patch("urllib.request.urlopen", return_value=_FakeResponse()) as urlopen:
+        assert module.check() is True
+    assert urlopen.call_args[0][0] == url

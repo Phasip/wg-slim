@@ -127,13 +127,27 @@ def parse_bind_addr(bind_addr: str) -> Tuple[str, int]:
     - ":5000" -> ("0.0.0.0", 5000)
     - "0.0.0.0:5000" -> ("0.0.0.0", 5000)
     - "127.0.0.1:8080" -> ("127.0.0.1", 8080)
+    - "[::]:5000" -> ("::", 5000)
     """
     bind_addr = str(bind_addr)
     if ":" in bind_addr:
         host, port_str = bind_addr.rsplit(":", 1)
+        # IPv6 hosts are bracketed so their colons aren't read as the port.
+        if host.startswith("[") and host.endswith("]"):
+            host = host[1:-1]
         host = host if host else "0.0.0.0"
         return host, int(port_str)
     return "0.0.0.0", int(bind_addr)
+
+
+def local_url_host(host: str) -> str:
+    """Return a URL host part that reaches a server bound to `host` from this machine."""
+    # A wildcard bind is not a usable destination address.
+    if host in ("0.0.0.0", ""):
+        return "127.0.0.1"
+    if host == "::":
+        return "[::1]"
+    return f"[{host}]" if ":" in host else host
 
 
 def generate_random_password(length=16) -> str:

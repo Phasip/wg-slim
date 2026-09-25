@@ -41,15 +41,14 @@ def get_api_client(
 
     config = load_config(config_file)
 
+    bind_host, bind_port = wg_utils.parse_bind_addr(str(config.get("basic", {}).get("bind_addr", "5000")))
     if host is None:
-        host = "localhost"
+        host = wg_utils.local_url_host(bind_host)
+    elif ":" in host and not host.startswith("["):
+        host = f"[{host}]"
 
     if port is None:
-        bind_addr = config.get("basic", {}).get("bind_addr", "5000")
-        if ":" in bind_addr:
-            port = int(bind_addr.split(":")[1])
-        else:
-            port = int(bind_addr)
+        port = bind_port
 
     if password is None:
         password = config.get("basic", {}).get("password")
