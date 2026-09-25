@@ -2,7 +2,8 @@
 
 Watches the configuration for changes to `server.fw_rules`, renders the
 template via `SyncedConfigManager.render_server_fw_rules()` and applies the
-resulting nftables ruleset using `nft -f`.
+resulting nftables ruleset using `nft -f`, inside the `inet wgslim_fwrules`
+table.
 """
 
 from __future__ import annotations
@@ -15,6 +16,13 @@ import tempfile
 from config_model import SyncedConfigManager, ConfigSyncException
 
 logger = logging.getLogger(__name__)
+
+# `inet` so the rules apply to IPv6 as well as IPv4. Family-specific
+# matches such as `ip saddr` keep working inside an inet table.
+FAMILY = "inet"
+TABLE = "wgslim_fwrules"
+LEGACY_FAMILY = "ip"
+LEGACY_TABLE = "wgeasy_fwrules"
 
 
 class FwRulesSyncService:
@@ -35,9 +43,9 @@ class FwRulesSyncService:
             rendered = rendered.strip()
         if rendered == self._last_ruleset:
             return
-        FAMILY = "ip"
-        TABLE = "wgeasy_fwrules"
-        wrapped = f"destroy table {FAMILY} {TABLE};\n"
+        # Also drop the IPv4-only table used by earlier versions, or its
+        # rules would keep applying next to the new ones.
+        wrapped = f"destroy table {LEGACY_FAMILY} {LEGACY_TABLE};\ndestroy table {FAMILY} {TABLE};\n"
 
         if rendered:
             wrapped += f"table {FAMILY} {TABLE} {{\n{rendered}\n}}\n"

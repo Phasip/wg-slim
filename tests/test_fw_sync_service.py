@@ -32,3 +32,17 @@ def test_failed_ruleset_is_retried():
     with patch("fw_sync_service.subprocess.run") as run:
         service.sync_now()
     assert run.call_count == 1
+
+
+def test_rules_go_into_inet_table_and_legacy_table_is_dropped():
+    service = make_service("chain c { }")
+    applied = []
+
+    def capture(args, **kwargs):
+        with open(args[-1], encoding="utf-8") as f:
+            applied.append(f.read())
+
+    with patch("fw_sync_service.subprocess.run", side_effect=capture):
+        service.sync_now()
+
+    assert applied == ["destroy table ip wgeasy_fwrules;\ndestroy table inet wgslim_fwrules;\ntable inet wgslim_fwrules {\nchain c { }\n}\n"]
