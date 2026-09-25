@@ -11,6 +11,7 @@ from openapi_server.apis.default_api_base import BaseDefaultApi
 import collections
 import os
 import logging
+import logging.handlers
 
 
 import wg_manager
@@ -19,10 +20,12 @@ import wg_api
 
 from fastapi import HTTPException, Response, FastAPI
 from fastapi.responses import JSONResponse
+from starlette.concurrency import run_in_threadpool
 
 import wg_utils
 
 from openapi_server.models.success import Success
+from openapi_server.models.wire_guard_config import WireGuardConfig
 from openapi_server.models.yaml_response import YamlResponse
 from openapi_server.models.server_status import ServerStatus
 from openapi_server.models.server import Server
@@ -55,6 +58,47 @@ def _get_app() -> FastAPI:
 
 def get_cm() -> config_model.SyncedConfigManager:
     return _get_app().state.config_manager
+
+
+def _read_log_tail(log_file: str) -> list[str]:
+    if not os.path.exists(log_file):
+        return []
+    with open(log_file, "r", encoding="utf-8", errors="replace") as f:
+        # Streams the file, holding only the last lines in memory.
+        lines = collections.deque(f, maxlen=LOG_TAIL_LINES)
+    return [line.rstrip("\n") for line in lines]
+
+
+def _clear_logs(handler: logging.handlers.RotatingFileHandler) -> None:
+    handler.acquire()
+    try:
+        assert handler.stream is not None, "log handler is open"
+        handler.stream.seek(0)
+        handler.stream.truncate(0)
+        for i in range(1, handler.backupCount + 1):
+            rotated = f"{handler.baseFilename}.{i}"
+            if os.path.exists(rotated):
+                os.remove(rotated)
+    finally:
+        handler.release()
+
+
+def _wg_show(cfg: WireGuardConfig) -> dict[str, str]:
+    blocks = wg_manager.WgManager.get_wg_show_peer_blocks(cfg.server.interface_name)
+    result: dict[str, str] = {}
+
+    for p in cfg.peers:
+        # A peer edited through the API may lack a PublicKey; that must not
+        # break `wg show` for every other peer.
+        pub = wg_utils.parse_wg_section(p.as_peer).get("PublicKey")
+        if pub and pub in blocks:
+            result[p.name] = blocks[pub]
+        elif p.name == cfg.server.name:
+            result[p.name] = "[Peer is active server]"
+        else:
+            result[p.name] = "[Peer inactive in WireGuard]"
+
+    return result
 
 
 class DefaultApiImpl(BaseDefaultApi):
@@ -92,7 +136,7 @@ class DefaultApiImpl(BaseDefaultApi):
             logger.warning("Login refused from %s: too many failed attempts", remote)
             raise HTTPException(status_code=429, detail="Too many failed login attempts, try again later", headers={"Retry-After": str(retry_after)})
 
-        if not cfg.check_password(password):
+        if not await run_in_threadpool(cfg.check_password, password):
             throttle.record_failure(host)
             logger.warning("Login failed from %s user_agent=%s", remote, ua)
             raise HTTPException(status_code=403, detail="Invalid password")
@@ -109,18 +153,18 @@ class DefaultApiImpl(BaseDefaultApi):
 
     async def server_yaml_get(self) -> YamlResponse:
         cfg = get_cm()
-        return YamlResponse(yaml=cfg.get_peer_yaml(cfg.snapshot().server.name))
+        return YamlResponse(yaml=await run_in_threadpool(cfg.get_peer_yaml, cfg.snapshot().server.name))
 
     async def server_yaml_put(self, server_yaml_put_request: ServerYamlPutRequest | None) -> None:
         if server_yaml_put_request is None:
             raise HTTPException(status_code=400, detail="Missing server yaml body")
 
-        get_cm().update_server_from_yaml(server_yaml_put_request.yaml)
+        await run_in_threadpool(get_cm().update_server_from_yaml, server_yaml_put_request.yaml)
         return None
 
     async def server_status_get(self) -> ServerStatus:
         interface = get_cm().snapshot().server.interface_name
-        is_running = wg_manager.WgManager.is_interface_up(interface)
+        is_running = await run_in_threadpool(wg_manager.WgManager.is_interface_up, interface)
 
         if not is_running:
             return ServerStatus(status="down", interface=interface, is_running=False)
@@ -132,45 +176,14 @@ class DefaultApiImpl(BaseDefaultApi):
         return Server(name=s.name, interface_name=s.interface_name)
 
     async def server_logs_get(self) -> ServerLogsResponse:
-        log_file = wg_utils.log_file_path(get_cm().file_path)
-        if not os.path.exists(log_file):
-            return ServerLogsResponse(logs=[])
-        with open(log_file, "r", encoding="utf-8", errors="replace") as f:
-            # Streams the file, holding only the last lines in memory.
-            lines = collections.deque(f, maxlen=LOG_TAIL_LINES)
-        return ServerLogsResponse(logs=[line.rstrip("\n") for line in lines])
+        return ServerLogsResponse(logs=await run_in_threadpool(_read_log_tail, wg_utils.log_file_path(get_cm().file_path)))
 
     async def server_logs_delete(self) -> Success:
-        handler = _get_app().state.log_handler
-        handler.acquire()
-        try:
-            handler.stream.seek(0)
-            handler.stream.truncate(0)
-            for i in range(1, handler.backupCount + 1):
-                rotated = f"{handler.baseFilename}.{i}"
-                if os.path.exists(rotated):
-                    os.remove(rotated)
-        finally:
-            handler.release()
+        await run_in_threadpool(_clear_logs, _get_app().state.log_handler)
         return Success(message="")
 
     async def wg_show_get(self) -> dict[str, str] | None:
-        cfg = get_cm().snapshot()
-        blocks = wg_manager.WgManager.get_wg_show_peer_blocks(cfg.server.interface_name)
-        result: dict[str, str] = {}
-
-        for p in cfg.peers:
-            # A peer edited through the API may lack a PublicKey; that must not
-            # break `wg show` for every other peer.
-            pub = wg_utils.parse_wg_section(p.as_peer).get("PublicKey")
-            if pub and pub in blocks:
-                result[p.name] = blocks[pub]
-            elif p.name == cfg.server.name:
-                result[p.name] = "[Peer is active server]"
-            else:
-                result[p.name] = "[Peer inactive in WireGuard]"
-
-        return result
+        return await run_in_threadpool(_wg_show, get_cm().snapshot())
 
     async def peers_get(self) -> PeersList:
         peers = [Peer.model_validate(p.model_dump()) for p in get_cm().snapshot().peers]
@@ -183,46 +196,47 @@ class DefaultApiImpl(BaseDefaultApi):
         if not name:
             raise HTTPException(status_code=400, detail="Missing peer name")
 
-        peer = get_cm().add_peer(name)
+        peer = await run_in_threadpool(get_cm().add_peer, name)
         return JSONResponse(status_code=201, content=peer.model_dump())
 
     async def peers_peer_name_delete(self, peer_name: str) -> None:
-        get_cm().remove_peer(peer_name)
+        await run_in_threadpool(get_cm().remove_peer, peer_name)
         return None
 
     async def peers_peer_name_config_get(self, peer_name: str) -> ConfigResponse:
-        return ConfigResponse(config=get_cm().get_peer_config_string(peer_name))
+        return ConfigResponse(config=await run_in_threadpool(get_cm().get_peer_config_string, peer_name))
 
     async def peers_peer_name_qr_get(self, peer_name: str) -> Response:
-        png = wg_utils.render_qrcode_png(get_cm().get_peer_config_string(peer_name))
+        config = await run_in_threadpool(get_cm().get_peer_config_string, peer_name)
+        png = await run_in_threadpool(wg_utils.render_qrcode_png, config)
         return Response(content=png, media_type="image/png")
 
     async def peers_peer_name_regenerate_key_post(self, peer_name: str) -> Success:
-        get_cm().regenerate_key(peer_name)
+        await run_in_threadpool(get_cm().regenerate_key, peer_name)
         return Success(message="")
 
     async def peers_peer_name_enable_post(self, peer_name: str) -> None:
-        get_cm().set_peer_enabled(peer_name, True)
+        await run_in_threadpool(get_cm().set_peer_enabled, peer_name, True)
         return None
 
     async def peers_peer_name_disable_post(self, peer_name: str) -> None:
-        get_cm().set_peer_enabled(peer_name, False)
+        await run_in_threadpool(get_cm().set_peer_enabled, peer_name, False)
         return None
 
     async def config_get(self) -> ConfigResponse:
-        raw = get_cm().get_raw_config(censor_password=True)
+        raw = await run_in_threadpool(get_cm().get_raw_config, censor_password=True)
         return ConfigResponse(config=raw)
 
     async def config_put(self, config_put_request: ConfigPutRequest | None) -> Success:
         if config_put_request is None:
             raise HTTPException(status_code=400, detail="Missing config put body")
-        get_cm().set_raw_config(config_put_request.yaml, ignore_password=True)
+        await run_in_threadpool(get_cm().set_raw_config, config_put_request.yaml, ignore_password=True)
         return Success(message="")
 
     async def config_import_wg_post(self, config_import_wg_post_request: ConfigImportWgPostRequest | None) -> Success:
         if config_import_wg_post_request is None:
             raise HTTPException(status_code=400, detail="Missing import wg body")
-        get_cm().import_wg_config(config_import_wg_post_request.wg_config, config_import_wg_post_request.endpoint)
+        await run_in_threadpool(get_cm().import_wg_config, config_import_wg_post_request.wg_config, config_import_wg_post_request.endpoint)
 
         return Success(message="")
 
@@ -238,10 +252,10 @@ class DefaultApiImpl(BaseDefaultApi):
 
         cfg = get_cm()
 
-        if not cfg.check_password(current):
+        if not await run_in_threadpool(cfg.check_password, current):
             raise HTTPException(status_code=403, detail="Invalid password")
 
-        cfg.set_password(new_pw)
+        await run_in_threadpool(cfg.set_password, new_pw)
 
         # The old password is gone; any session created with it must go too.
         # The caller keeps its own token - it just proved it knows the password.
@@ -250,18 +264,18 @@ class DefaultApiImpl(BaseDefaultApi):
         return Success(message="")
 
     async def peers_peer_name_yaml_get(self, peer_name: str) -> YamlResponse:
-        return YamlResponse(yaml=get_cm().get_peer_yaml(peer_name))
+        return YamlResponse(yaml=await run_in_threadpool(get_cm().get_peer_yaml, peer_name))
 
     async def peers_peer_name_yaml_put(self, peer_name: str, peers_peer_name_yaml_put_request: PeersPeerNameYamlPutRequest | None) -> None:
         if peers_peer_name_yaml_put_request is None:
             raise HTTPException(status_code=400, detail="Missing peers yaml body")
-        get_cm().update_peer_from_yaml(peer_name, peers_peer_name_yaml_put_request.yaml)
+        await run_in_threadpool(get_cm().update_peer_from_yaml, peer_name, peers_peer_name_yaml_put_request.yaml)
         return None
 
     async def update_all_peers_post(self, update_all_peers_post_request: UpdateAllPeersPostRequest) -> None:
         if update_all_peers_post_request is None:
             raise HTTPException(status_code=400, detail="Missing body")
-        get_cm().apply_template_to_peers(update_all_peers_post_request.template_peer)
+        await run_in_threadpool(get_cm().apply_template_to_peers, update_all_peers_post_request.template_peer)
         return None
 
     async def health_get(self) -> dict[str, str]:
