@@ -134,13 +134,7 @@ class TestPeerEnableDisableAPI:
             generated_api_client.peers_peer_name_disable_post("nonexistent")
 
 
-class TestImportWgConfig:
-    """Tests for importing WireGuard wg0.conf."""
-
-    def test_import_wg_config_success(self, mock_wg_manager, generated_api_client, config_for_test_client):
-        """Test successful import of wg0.conf."""
-        mock_wg_manager["wg pubkey"] = (0, "SERVER_PUBLIC_KEY\\n", "")
-        base_config = """basic:
+SERVER_ONLY_CONFIG = """basic:
   password: test
   bind_addr: "5000"
 server:
@@ -156,6 +150,15 @@ peers:
       PublicKey = PUBKEY123
       Endpoint = test:51820
 """
+
+
+class TestImportWgConfig:
+    """Tests for importing WireGuard wg0.conf."""
+
+    def test_import_wg_config_success(self, mock_wg_manager, generated_api_client, config_for_test_client):
+        """Test successful import of wg0.conf."""
+        mock_wg_manager["wg pubkey"] = (0, "SERVER_PUBLIC_KEY\\n", "")
+        base_config = SERVER_ONLY_CONFIG
         generated_api_client.config_put(wgslim_api_client.ConfigPutRequest(yaml=base_config))
 
         wg_config = """[Interface]
@@ -212,3 +215,17 @@ PersistentKeepalive = 25
         """Test import with missing server private key."""
         with pytest.raises(BadRequestException):
             generated_api_client.config_import_wg_post(wgslim_api_client.ConfigImportWgPostRequest(wg_config="[Interface]\nAddress = 10.0.0.1/24", endpoint="server:51820"))
+
+    def test_import_wg_config_peer_without_allowed_ips(self, mock_wg_manager, generated_api_client):
+        """A [Peer] without AllowedIPs is a bad request, not a server error."""
+        mock_wg_manager["wg pubkey"] = (0, "SERVER_PUBLIC_KEY", "")
+        generated_api_client.config_put(wgslim_api_client.ConfigPutRequest(yaml=SERVER_ONLY_CONFIG))
+        wg_config = "[Interface]\nAddress = 10.0.0.1/24\nPrivateKey = KEY\n\n[Peer]\nPublicKey = PEER\n"
+        with pytest.raises(BadRequestException, match="no AllowedIPs"):
+            generated_api_client.config_import_wg_post(wgslim_api_client.ConfigImportWgPostRequest(wg_config=wg_config, endpoint="server:51820"))
+
+    def test_import_wg_config_line_without_equals(self, generated_api_client):
+        generated_api_client.config_put(wgslim_api_client.ConfigPutRequest(yaml=SERVER_ONLY_CONFIG))
+        wg_config = "[Interface]\nAddress = 10.0.0.1/24\nPrivateKey = KEY\nnot a setting\n"
+        with pytest.raises(BadRequestException, match="Key = Value"):
+            generated_api_client.config_import_wg_post(wgslim_api_client.ConfigImportWgPostRequest(wg_config=wg_config, endpoint="server:51820"))

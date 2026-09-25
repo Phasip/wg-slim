@@ -33,6 +33,11 @@ KNOWN_WG_KEYS = {
     ]
 }
 
+
+class WgSectionSyntaxError(ValueError):
+    """Raised when a WireGuard config section contains a line that is not `Key = Value`."""
+
+
 """
 A case-insensitive dictionary for WireGuard config keys.
 We do not limit keys to known WireGuard config keys.
@@ -92,6 +97,8 @@ def parse_wg_section(section: str) -> WireguardDict:
         if line.strip().startswith("#") or not line.strip():
             continue
         # TODO: Keep comments in the WireguardDict somehow
+        if "=" not in line:
+            raise WgSectionSyntaxError(f"Expected 'Key = Value', got {line.strip()!r}")
         k, v = line.split("=", 1)
         result[k.strip()] = v.strip()
     return result

@@ -256,6 +256,11 @@ class TestRawConfigInput:
 
         assert [p["name"] for p in on_disk(manager)["peers"]] == ["server", "alice"]
 
+    def test_section_line_without_equals_is_rejected(self, manager):
+        with pytest.raises(ConfigValidationError, match="Peer 'alice' as_peer"):
+            manager.update_peer_from_yaml("alice", peer_yaml(manager, "alice", as_peer="PublicKey = ALICEPUB\nnonsense"))
+        assert "nonsense" not in config_model.get_peer(manager.config, "alice").as_peer
+
     def test_valid_config_is_accepted(self, manager):
         config = yaml.safe_load(yaml.dump(BASE_CONFIG))
         config["server"]["interface_name"] = "wg7"

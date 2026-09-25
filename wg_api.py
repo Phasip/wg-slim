@@ -233,6 +233,7 @@ def create_app(sync_service: WgConfigSyncService | None = None, config_file: str
         DontKnowPeersPrivatekey: 400,
         PeerNotFoundException: 404,
         PeerExistsException: 409,
+        wg_utils.WgSectionSyntaxError: 400,
         PydanticCoreValidationError: 400,
         PydanticValidationError: 400,
         Exception: 500,

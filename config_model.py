@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 import os
 import re
+import subprocess
 import tempfile
 import threading
 from ipaddress import IPv4Address, IPv6Address, ip_address, ip_network
@@ -195,6 +196,14 @@ class SyncedConfigManager:
             raise ConfigValidationError(f"Duplicate peer name(s): {', '.join(duplicates)}")
         if self._config.server.name not in names:
             raise ConfigValidationError(f"Server name '{self._config.server.name}' must match an existing peer")
+        # Checked here so a malformed section is a validation error, not a
+        # crash while generating the WireGuard config.
+        for p in self._config.peers:
+            for section_name, section in (("interface", p.interface), ("as_peer", p.as_peer)):
+                try:
+                    wg_utils.parse_wg_section(section)
+                except wg_utils.WgSectionSyntaxError as e:
+                    raise ConfigValidationError(f"Peer '{p.name}' {section_name}: {e}") from None
 
     def _write_to_disk(self) -> None:
         """Write the config atomically, so an interrupted save cannot destroy it.
@@ -267,7 +276,7 @@ class SyncedConfigManager:
     def add_peer(self, name: str) -> Peer:
         with self._lock:
             if not re.fullmatch(r"[a-zA-Z0-9_-]+", name):
-                raise ValueError("Invalid peer name")
+                raise ConfigValidationError("Invalid peer name")
             if any(p.name == name for p in self._config.peers):
                 raise PeerExistsException(f"Peer '{name}' exists")
             srv = self._config.server
@@ -616,7 +625,10 @@ def parse_wg_conf(wg_config: str, endpoint: str) -> dict[str, Any]:
     if "Address" not in interface_data:
         raise ConfigValidationError("Server [Interface] missing Address")
 
-    server_public_key = WgManager.get_pubkey(interface_data["PrivateKey"])
+    try:
+        server_public_key = WgManager.get_pubkey(interface_data["PrivateKey"])
+    except subprocess.CalledProcessError:
+        raise ConfigValidationError("Server [Interface] has an invalid PrivateKey") from None
     server_interface = wg_utils.build_wg_section(interface_data)
     server_as_peer = wg_utils.build_wg_section(
         wg_utils.WireguardDict(
@@ -635,7 +647,9 @@ def parse_wg_conf(wg_config: str, endpoint: str) -> dict[str, Any]:
     for i, peer_data in enumerate(peer_sections):
         if "PublicKey" not in peer_data:
             continue
-        allowed_ips = peer_data["AllowedIPs"]
+        allowed_ips = peer_data.get("AllowedIPs")
+        if not allowed_ips:
+            raise ConfigValidationError(f"[Peer] {peer_data['PublicKey']} has no AllowedIPs")
         peer_ip = allowed_ips.split(",")[0].strip()
 
         peer_interface_data: wg_utils.WireguardDict = wg_utils.WireguardDict(
