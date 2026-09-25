@@ -9,6 +9,8 @@ ruff
 schemathesis
 docker
 pyright
+# Used by tests/test_converter_wgeasy.py to validate converter output.
+jsonschema
 # Required by fastapi's TestClient. Previously arrived only as a transitive
 # dependency of the generated package's fastapi[all]; listed here so the
 # generated packages can be installed with --no-deps.
