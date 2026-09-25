@@ -24,10 +24,23 @@ class WgConfigSyncService:
         self.output_dir = "/etc/wireguard"
 
     def sync_now(self) -> None:
-        """Perform an immediate sync of the configuration."""
+        """Perform an immediate sync of the configuration.
+
+        Raises ConfigSyncException if a WireGuard command fails, so the save
+        is rejected and the error is reported to the caller.
+        """
         logger.info("Starting configuration sync...")
 
         interface = self.config_manager.config.server.interface_name
+        try:
+            self._sync(interface)
+        except subprocess.CalledProcessError as e:
+            detail = (e.stderr or "").strip()
+            raise ConfigSyncException(f"Failed to sync interface {interface}: {' '.join(e.cmd)} exited with {e.returncode}: {detail}") from e
+        except OSError as e:
+            raise ConfigSyncException(f"Failed to sync interface {interface}: {e}") from e
+
+    def _sync(self, interface: str) -> None:
         output_config = os.path.join(self.output_dir, f"{interface}.conf")
 
         if interface != self.active_interface and wg_manager.WgManager.is_interface_up(self.active_interface):
@@ -48,10 +61,7 @@ class WgConfigSyncService:
         logger.info("Syncing configuration to interface %s...", interface)
         if not wg_manager.WgManager.is_interface_up(interface):
             logger.info("Interface %s not up; bringing up with wg-quick", interface)
-            try:
-                wg_manager.WgManager.bring_up(output_config)
-            except subprocess.CalledProcessError as e:
-                raise ConfigSyncException(f"Failed to bring up interface {interface}: {e}") from e
+            wg_manager.WgManager.bring_up(output_config)
         else:
             wg_manager.WgManager.sync_config(interface, output_config)
 
