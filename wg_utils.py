@@ -12,7 +12,7 @@ import os
 import secrets
 from typing import Dict, Iterator, Tuple
 
-import pyqrcode
+import segno
 
 
 # List of known WireGuard keys in canonical casing
@@ -206,7 +206,8 @@ def verify_password(password: str, password_hash: str) -> bool:
 def render_qrcode_png(content: str) -> bytes:
     """Render `content` as a PNG QR code."""
     buf = io.BytesIO()
-    pyqrcode.create(content).png(buf, scale=6)  # type: ignore
+    # make_qr: never a Micro QR, which phone scanners often can't read.
+    segno.make_qr(content, error="h").save(buf, kind="png", scale=6)
     return buf.getvalue()
 
 

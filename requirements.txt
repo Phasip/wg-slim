@@ -1,6 +1,5 @@
 pyyaml
-pyqrcode
-pypng
+segno
 fastapi
 jinja2
 uvicorn[standard]
