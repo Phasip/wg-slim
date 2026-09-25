@@ -26,12 +26,12 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.10'
+          python-version: '3.13'
 
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '18'
+          node-version: '22'
 
       - name: Install Java (for OpenAPI generator)
         uses: actions/setup-java@v4
@@ -59,6 +59,26 @@ jobs:
       - name: Run tests
         run: make test-ci
 
+      # Unit tests run against CI's Python; this checks that the image that
+      # actually ships builds and becomes healthy.
+      - name: Build image for smoke test
+        run: docker build --target full -t wg-slim:ci .
+
+      - name: Smoke test image
+        run: |
+          docker run -d --name wg-slim-ci --cap-add NET_ADMIN \
+            -e INITIAL_CONFIG=$'basic:\n  bind_addr: "5000"\n  password: ci\nserver:\n  interface_name: wg0\n' \
+            wg-slim:ci
+          for i in $(seq 1 30); do
+            if docker exec wg-slim-ci python3 /app/healthcheck.py; then
+              docker exec wg-slim-ci wg show wg0
+              exit 0
+            fi
+            sleep 2
+          done
+          docker logs wg-slim-ci
+          exit 1
+
       - name: Log in to GitHub Container Registry
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         uses: docker/login-action@v3
@@ -69,11 +89,11 @@ jobs:
 
       - name: Set up QEMU
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-        uses: docker/setup-qemu-action@v2
+        uses: docker/setup-qemu-action@v3
 
       - name: Set up Docker Buildx
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-        uses: docker/setup-buildx-action@v2
+        uses: docker/setup-buildx-action@v3
 
       - name: Extract metadata for Docker
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
