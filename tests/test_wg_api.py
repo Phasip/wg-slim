@@ -194,3 +194,11 @@ def test_clear_logs(generated_api_client):
 def test_clear_logs_requires_auth(generated_unauth_api_client):
     with pytest.raises(UnauthorizedException):
         generated_unauth_api_client.server_logs_delete()
+
+
+def test_method_not_allowed_lists_every_method(unauth_api_client):
+    """A 405 must name all methods of the path, and use the API's Error body."""
+    response = unauth_api_client.request("OPTIONS", "/api/server/yaml")
+    assert response.status_code == 405
+    assert response.headers["Allow"] == "GET, PUT"
+    assert response.json() == {"error": "Method Not Allowed"}

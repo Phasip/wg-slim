@@ -12,6 +12,8 @@ from fastapi import Request
 from fastapi.responses import JSONResponse, RedirectResponse, Response
 from fastapi.templating import Jinja2Templates
 
+from starlette.exceptions import HTTPException as StarletteHTTPException
+from starlette.routing import Match
 from starlette.staticfiles import StaticFiles
 
 from config_model import SyncedConfigManager
@@ -45,6 +47,8 @@ request_ctx: ContextVar[Request | None] = ContextVar("request_ctx")
 
 
 TOKEN_TTL = timedelta(hours=24)
+
+HTTP_METHODS = ("GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS")
 
 
 def revoke_active_token(app: FastAPI) -> None:
@@ -246,9 +250,22 @@ def create_app(sync_service: WgConfigSyncService | None = None, config_file: str
         msg = ", ".join(items)
         return mkerror(400, msg)
 
+    def allowed_methods(request: Request) -> str:
+        # FastAPI registers one route per method, so starlette's own 405 only
+        # names the methods of the first route that matched the path. Probe
+        # every method through the public `matches()`, which also works for
+        # FastAPI's grouped (included) routers.
+        allowed = [m for m in HTTP_METHODS if any(route.matches({**request.scope, "method": m})[0] == Match.FULL for route in root_app.router.routes)]
+        return ", ".join(allowed)
+
     async def HTTPExceptionHandler(request: Request, exc: Exception):
-        assert isinstance(exc, FastAPIHTTPException)  # allow_motivation: Known type, only for type checker
-        return mkerror(exc.status_code, exc.detail)
+        # Registered for starlette's base class so routing errors (404, 405)
+        # get the same Error body as the ones raised by our handlers.
+        assert isinstance(exc, StarletteHTTPException)  # allow_motivation: Known type, only for type checker
+        response = mkerror(exc.status_code, exc.detail)
+        if exc.status_code == 405:
+            response.headers["Allow"] = allowed_methods(request)
+        return response
 
     async def _unified_exception_handler(request: Request, exc: Exception):
         for exc_type, status_code in exception_mappings.items():
@@ -257,7 +274,7 @@ def create_app(sync_service: WgConfigSyncService | None = None, config_file: str
         return mkerror(500, "Internal server error")
 
     root_app.add_exception_handler(RequestValidationError, RequestValidationErrorHandler)
-    root_app.add_exception_handler(FastAPIHTTPException, HTTPExceptionHandler)
+    root_app.add_exception_handler(StarletteHTTPException, HTTPExceptionHandler)
     for exc in exception_mappings.keys():
         root_app.add_exception_handler(exc, _unified_exception_handler)
 
