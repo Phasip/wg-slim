@@ -35,7 +35,6 @@ class FwRulesSyncService:
             rendered = rendered.strip()
         if rendered == self._last_ruleset:
             return
-        self._last_ruleset = rendered
         FAMILY = "ip"
         TABLE = "wgeasy_fwrules"
         wrapped = f"destroy table {FAMILY} {TABLE};\n"
@@ -53,3 +52,6 @@ class FwRulesSyncService:
             raise ConfigSyncException(f"nft failed: returncode={e.returncode} stdout={e.stdout!r} stderr={e.stderr!r}") from e
         except OSError as e:
             raise ConfigSyncException(f"OS error applying fw_rules: {e}") from e
+        # Only remember a ruleset once nft accepted it, so a failed one is
+        # retried rather than skipped as "unchanged".
+        self._last_ruleset = rendered
