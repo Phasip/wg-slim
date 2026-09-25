@@ -19,9 +19,14 @@ STATIC_CSS := static/css
 STATIC_JS := static/js
 STATIC_FONTS := static/css/fonts
 
+# Bootstrap versions vendored in static/. Pinned so `make update-bootstrap`
+# is reproducible; bump them deliberately to upgrade.
+BOOTSTRAP_VERSION := 5.3.8
+BOOTSTRAP_ICONS_VERSION := 1.13.1
+
 # Bootstrap CDN base URLs
-BOOTSTRAP_CDN := https://cdn.jsdelivr.net/npm/bootstrap@latest/dist
-BOOTSTRAP_ICONS_CDN := https://cdn.jsdelivr.net/npm/bootstrap-icons@latest/font
+BOOTSTRAP_CDN := https://cdn.jsdelivr.net/npm/bootstrap@$(BOOTSTRAP_VERSION)/dist
+BOOTSTRAP_ICONS_CDN := https://cdn.jsdelivr.net/npm/bootstrap-icons@$(BOOTSTRAP_ICONS_VERSION)/font
 
 # Paths for OpenAPI client generation and bundling
 OPENAPI_FETCH_DIR := openapi_generated/typescript-fetch
@@ -74,12 +79,12 @@ install-generated: $(STAMP_DIR)/server $(STAMP_DIR)/python-client
 
 # Update Bootstrap CSS and JS to latest version
 update-bootstrap:
-	@echo "Updating Bootstrap to latest version..."
+	@echo "Updating Bootstrap to $(BOOTSTRAP_VERSION)..."
 	mkdir -p $(STATIC_CSS) $(STATIC_JS)
 	curl -sL $(BOOTSTRAP_CDN)/css/bootstrap.min.css -o $(STATIC_CSS)/bootstrap.min.css
 	curl -sL $(BOOTSTRAP_CDN)/js/bootstrap.bundle.min.js -o $(STATIC_JS)/bootstrap.bundle.min.js
 
-	@echo "Updating Bootstrap Icons to latest version..."
+	@echo "Updating Bootstrap Icons to $(BOOTSTRAP_ICONS_VERSION)..."
 	mkdir -p $(STATIC_CSS) $(STATIC_FONTS)
 	curl -sL $(BOOTSTRAP_ICONS_CDN)/bootstrap-icons.min.css -o $(STATIC_CSS)/bootstrap-icons.min.css
 	curl -sL $(BOOTSTRAP_ICONS_CDN)/fonts/bootstrap-icons.woff -o $(STATIC_FONTS)/bootstrap-icons.woff
