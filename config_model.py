@@ -163,6 +163,10 @@ def get_peer(cfg: WireGuardConfig, name: str) -> Peer:
         raise PeerNotFoundException(f"Peer '{name}' not found") from None
 
 
+# `basic` holds exactly one of these; see `_validate_password_settings`.
+PASSWORD_FIELDS = ("password", "password_hash")
+
+
 class SyncedConfigManager:
     """Manages a WireGuard YAML config and keeps it synced to disk."""
 
@@ -182,7 +186,38 @@ class SyncedConfigManager:
         # WireGuardConfig declares `basic`/`server`/`peers` as model types, so
         # pydantic validates the nested sections as part of this call.
         self._config = WireGuardConfig.model_validate(data)
+        self._validate_password_settings()
         logger.info("Loaded config from %s", self.file_path)
+
+    def _validate_password_settings(self) -> None:
+        basic = self._config.basic
+        if basic.password is not None and basic.password_hash is not None:
+            raise ConfigValidationError("Set either basic.password or basic.password_hash, not both")
+        if basic.password is None and basic.password_hash is None:
+            raise ConfigValidationError("One of basic.password or basic.password_hash must be set")
+        if basic.password_hash is not None:
+            try:
+                wg_utils.validate_password_hash(basic.password_hash)
+            except ValueError as e:
+                raise ConfigValidationError(str(e)) from None
+
+    def check_password(self, password: str) -> bool:
+        """Check a login password against basic.password or basic.password_hash."""
+        basic = self._config.basic
+        if basic.password_hash is not None:
+            return wg_utils.verify_password(password, basic.password_hash)
+        assert basic.password is not None, "config validation guarantees a password"
+        return wg_utils.secure_strcmp(password, basic.password)
+
+    def set_password(self, password: str) -> None:
+        """Change the web password, keeping whichever form (plain or hashed) is configured."""
+        with self._lock:
+            basic = self._config.basic
+            if basic.password_hash is not None:
+                basic.password_hash = wg_utils.hash_password(password)
+            else:
+                basic.password = password
+            self.save()
 
     def _validate_invariants(self) -> None:
         """Check the structural rules the rest of the code relies on.
@@ -190,6 +225,7 @@ class SyncedConfigManager:
         Callers mutate the in-memory config and then call `save()`, so this
         runs there rather than in each caller.
         """
+        self._validate_password_settings()
         names = [p.name for p in self._config.peers]
         duplicates = sorted({n for n in names if names.count(n) > 1})
         if duplicates:
@@ -215,7 +251,7 @@ class SyncedConfigManager:
         fd, tmp_path = tempfile.mkstemp(prefix=".config-", suffix=".yaml.tmp", dir=directory)
         try:
             with os.fdopen(fd, "w", encoding="utf-8") as f:
-                yaml.dump(self._config.model_dump(), f, Dumper=_MultilineStrDumper, default_flow_style=False)
+                yaml.dump(self._dump(), f, Dumper=_MultilineStrDumper, default_flow_style=False)
                 f.flush()
                 os.fsync(f.fileno())
             os.chmod(tmp_path, 0o600)
@@ -463,10 +499,20 @@ class SyncedConfigManager:
 
         return merged, comment
 
-    def get_raw_config(self, censor_password: bool = False) -> str:
+    def _dump(self) -> dict[str, Any]:
+        """Return the config as plain data, leaving out the unused password field."""
         data = self._config.model_dump()
+        for field in PASSWORD_FIELDS:
+            if data["basic"][field] is None:
+                del data["basic"][field]
+        return data
+
+    def get_raw_config(self, censor_password: bool = False) -> str:
+        data = self._dump()
         if censor_password:
-            data["basic"]["password"] = "PASSWORD_NOT_CHANGEABLE_IN_CONF_EDITOR"
+            # Only the configured field is shown, so the editor keeps
+            # displaying which form is in use.
+            data["basic"] = {k: ("PASSWORD_NOT_CHANGEABLE_IN_CONF_EDITOR" if k in PASSWORD_FIELDS else v) for k, v in data["basic"].items()}
         return yaml.dump(data, Dumper=_MultilineStrDumper, sort_keys=False)
 
     def set_raw_config(self, content: str, ignore_password: bool = False) -> None:
@@ -478,7 +524,9 @@ class SyncedConfigManager:
                 if ignore_password:
                     basic = data.get("basic")
                     _require_mapping(basic, "Config is missing a 'basic' section")
-                    basic["password"] = self._config.basic.password
+                    for field in PASSWORD_FIELDS:
+                        basic.pop(field, None)
+                    basic.update({k: v for k, v in self._dump()["basic"].items() if k in PASSWORD_FIELDS})
 
                 # Persist the new config; `save()` enforces the structural
                 # invariants (unique peer names, a peer named after the server)
@@ -538,7 +586,7 @@ class SyncedConfigManager:
         # File missing: parse fallback and ensure server peer exists
         data = yaml.safe_load(fallback_config_data)
 
-        if "password" not in data["basic"]:
+        if "password" not in data["basic"] and "password_hash" not in data["basic"]:
             generated_password = wg_utils.generate_random_password()
             data["basic"]["password"] = generated_password
             print("First setup, no initial password provided.")

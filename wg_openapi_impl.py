@@ -75,7 +75,6 @@ class DefaultApiImpl(BaseDefaultApi):
         password = login_request.password
 
         cfg = get_cm()
-        expected = cfg.config.basic.password
 
         req = wg_api.request_ctx.get()
         assert req is not None, "request context is not set"
@@ -86,7 +85,7 @@ class DefaultApiImpl(BaseDefaultApi):
         remote = f"{host}:{port}"
         ua = req.headers.get("user-agent", None)
 
-        if not wg_utils.secure_strcmp(password, expected):
+        if not cfg.check_password(password):
             logger.warning("Login failed from %s user_agent=%s", remote, ua)
             raise HTTPException(status_code=403, detail="Invalid password")
 
@@ -245,11 +244,10 @@ class DefaultApiImpl(BaseDefaultApi):
 
         cfg = get_cm()
 
-        if not wg_utils.secure_strcmp(current, cfg.config.basic.password):
+        if not cfg.check_password(current):
             raise HTTPException(status_code=403, detail="Invalid password")
 
-        cfg.config.basic.password = new_pw
-        cfg.save()
+        cfg.set_password(new_pw)
 
         # The old password is gone; any session created with it must go too.
         # The caller keeps its own token - it just proved it knows the password.

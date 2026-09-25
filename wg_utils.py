@@ -4,6 +4,9 @@ This module contains helper functions for WireGuard operations
 like key generation and config section parsing.
 """
 
+import base64
+import binascii
+import hashlib
 import io
 import os
 import secrets
@@ -141,6 +144,49 @@ def generate_random_password(length=16) -> str:
 def secure_strcmp(a: str, b: str) -> bool:
     """Compare two strings in a timing-attack resistant manner."""
     return secrets.compare_digest(a.encode("utf-8"), b.encode("utf-8"))
+
+
+# scrypt cost for new password hashes (~50ms, 16 MiB). Verification uses the
+# parameters stored in the hash, so these can be raised without breaking
+# existing hashes.
+SCRYPT_N = 2**14
+SCRYPT_R = 8
+SCRYPT_P = 1
+SCRYPT_MAXMEM = 256 * 1024 * 1024
+
+
+def hash_password(password: str) -> str:
+    """Return a `scrypt$N$r$p$salt$hash` string for `basic.password_hash`."""
+    salt = secrets.token_bytes(16)
+    digest = hashlib.scrypt(password.encode("utf-8"), salt=salt, n=SCRYPT_N, r=SCRYPT_R, p=SCRYPT_P, maxmem=SCRYPT_MAXMEM)
+    return f"scrypt${SCRYPT_N}${SCRYPT_R}${SCRYPT_P}${base64.b64encode(salt).decode()}${base64.b64encode(digest).decode()}"
+
+
+def _parse_password_hash(password_hash: str) -> Tuple[int, int, int, bytes, bytes]:
+    parts = password_hash.split("$")
+    if len(parts) != 6 or parts[0] != "scrypt":
+        raise ValueError("password_hash must look like scrypt$N$r$p$salt$hash")
+    try:
+        n, r, p = int(parts[1]), int(parts[2]), int(parts[3])
+        salt = base64.b64decode(parts[4], validate=True)
+        digest = base64.b64decode(parts[5], validate=True)
+    except (ValueError, binascii.Error) as e:
+        raise ValueError(f"password_hash is malformed: {e}") from None
+    if n < 2 or n & (n - 1) or 128 * n * r > SCRYPT_MAXMEM or not salt or not digest:
+        raise ValueError("password_hash has invalid scrypt parameters")
+    return n, r, p, salt, digest
+
+
+def validate_password_hash(password_hash: str) -> None:
+    """Raise ValueError unless `password_hash` is a hash `verify_password` can check."""
+    _parse_password_hash(password_hash)
+
+
+def verify_password(password: str, password_hash: str) -> bool:
+    """Check `password` against a `hash_password` string in constant time."""
+    n, r, p, salt, digest = _parse_password_hash(password_hash)
+    candidate = hashlib.scrypt(password.encode("utf-8"), salt=salt, n=n, r=r, p=p, maxmem=SCRYPT_MAXMEM, dklen=len(digest))
+    return secrets.compare_digest(candidate, digest)
 
 
 def render_qrcode_png(content: str) -> bytes:

@@ -2,6 +2,7 @@
 """Command-line utility for wg-slim API interactions."""
 
 import argparse
+import getpass
 import json
 import os
 import sys
@@ -9,6 +10,7 @@ from pathlib import Path
 from typing import Any, Optional
 
 import yaml
+import wg_utils
 import wgslim_api_client
 from wgslim_api_client.models.login_request import LoginRequest
 from wgslim_api_client.models.peers_post_request import PeersPostRequest
@@ -52,7 +54,7 @@ def get_api_client(
     if password is None:
         password = config.get("basic", {}).get("password")
         if not password:
-            print("Error: No password found in config", file=sys.stderr)
+            print("Error: No password found in config (with basic.password_hash, pass --password)", file=sys.stderr)
             sys.exit(1)
 
     base_url = f"http://{host}:{port}/api"
@@ -150,6 +152,21 @@ def cmd_delete_peer(args: argparse.Namespace) -> None:
     print(f"Peer '{args.name}' deleted successfully")
 
 
+def cmd_hash_password(args: argparse.Namespace) -> None:
+    """Print a basic.password_hash value for a password read from the terminal or stdin."""
+    if sys.stdin.isatty():
+        password = getpass.getpass("Password: ")
+        if getpass.getpass("Repeat password: ") != password:
+            print("Error: Passwords do not match", file=sys.stderr)
+            sys.exit(1)
+    else:
+        password = sys.stdin.readline().rstrip("\n")
+    if not password:
+        print("Error: Empty password", file=sys.stderr)
+        sys.exit(1)
+    print(wg_utils.hash_password(password))
+
+
 def main() -> None:
     """Main entry point for CLI."""
     parser = argparse.ArgumentParser(description="wg-slim CLI tool for managing WireGuard configurations")
@@ -192,6 +209,8 @@ def main() -> None:
     parser_delete = subparsers.add_parser("delete-peer", help="Delete a peer")
     parser_delete.add_argument("name", help="Peer name")
 
+    subparsers.add_parser("hash-password", help="Print a basic.password_hash value (reads the password from the terminal or stdin)")
+
     args = parser.parse_args()
 
     if not args.command:
@@ -204,6 +223,7 @@ def main() -> None:
         "list-peers": cmd_list_peers,
         "get-peer-config": cmd_get_peer_config,
         "delete-peer": cmd_delete_peer,
+        "hash-password": cmd_hash_password,
     }
 
     command_map[args.command](args)

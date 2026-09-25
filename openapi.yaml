@@ -611,13 +611,17 @@ components:
     ConfigBasic:
       type: object
       nullable: false
+      description: Exactly one of `password` and `password_hash` must be set.
       required:
-      - password
       - bind_addr
       additionalProperties: false
       properties:
         password:
           $ref: '#/components/schemas/Password'
+        password_hash:
+          type: string
+          description: scrypt hash of the web password, as printed by `wgslim_cli.py hash-password`. Use instead of `password`.
+          pattern: '^scrypt\$[0-9]+\$[0-9]+\$[0-9]+\$[A-Za-z0-9+/=]+\$[A-Za-z0-9+/=]+$'
         bind_addr:
           type: string
     Server:

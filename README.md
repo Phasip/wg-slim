@@ -25,6 +25,29 @@ wg-slim_1  | First setup, no initial password provided.
 wg-slim_1  | Web management password: SqxEyHToOYkvALVk
 ```
 
+### Hashed password
+
+Instead of `basic.password` you can set `basic.password_hash` (setting both is an error). Generate the hash with:
+
+```bash
+$ docker compose -f examples/docker-compose.basic.yml exec wg-slim python3 wgslim_cli.py hash-password
+Password:
+Repeat password:
+scrypt$16384$8$1$...
+```
+
+Put the printed value in `INITIAL_CONFIG` or the config file:
+
+```yaml
+basic:
+  bind_addr: "5000"
+  password_hash: "scrypt$16384$8$1$..."
+```
+
+When a hash is configured, changing the password in the web UI stores a new hash, not a plaintext password.
+
+## Configuration
+
 The server and each peer has two sections, "inteface" and "as_peer". The "interface" section configures [Interface] section for that users config. The "as_peer" section configures "[Peer]" section that will be seen in other configs.
 
 Two rules are enforced on every save, and a config violating either is rejected with a 400: peer names must be unique, and one peer must be named after `server.name` (that peer holds the server's own interface). Renaming the server peer therefore fails — change `server.name` and the peer name together in the config editor.
