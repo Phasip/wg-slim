@@ -22,7 +22,14 @@
             }
         }).catch(function (err) {
             console.error('Login error:', err);
-            errorDiv.textContent = err.message;
+            var status = err.response ? err.response.status : null;
+            if (status === 403) {
+                errorDiv.textContent = 'Invalid password';
+            } else if (status === 429) {
+                errorDiv.textContent = 'Too many failed login attempts, try again later';
+            } else {
+                errorDiv.textContent = err.message;
+            }
             errorDiv.classList.remove('d-none');
         });
     })

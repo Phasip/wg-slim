@@ -143,6 +143,7 @@ make test-docker
 
 - Strict HTTP headers
 - Timing attack resistant password and token comparison
+- Failed logins are throttled per client address (5 per 5 minutes). Behind a reverse proxy, set `FORWARDED_ALLOW_IPS` to the proxy's address so the real client address is used
 - No cookies, only bearer tokens in Authorization header
 - Changing the password revokes every other session (the caller keeps its own)
 - Config is written atomically and always as 0600 (it holds every private key)
@@ -155,7 +156,6 @@ make test-docker
 
 - Plaintext password in config and no pw policies (it's a feature!)
 - Command injection through PostUp/PostDown (it's a feature!)
-- No rate limiting or brute-force protection
 - No HTTPS (Expose only internally or use some other container for that I guess)
 - All private keys stored unencrypted and fully accessible to anyone with the password.
 

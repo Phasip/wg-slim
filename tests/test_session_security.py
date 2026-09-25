@@ -137,3 +137,39 @@ class TestMalformedPeerRobustness:
 
         assert response.status_code == 400
         assert "aliases" in response.json()["error"]
+
+
+class TestLoginThrottle:
+    """Repeated failed logins from one address are refused for a while."""
+
+    def fail(self, client, times):
+        for _ in range(times):
+            assert client.post("/api/login", json={"password": "wrong"}).status_code == 403
+
+    def test_blocked_after_too_many_failures(self, unauth_api_client):
+        self.fail(unauth_api_client, wg_api.MAX_FAILED_LOGINS)
+
+        # Refused even with the right password, and told when to retry
+        response = unauth_api_client.post("/api/login", json={"password": "testpassword"})
+        assert response.status_code == 429
+        assert int(response.headers["Retry-After"]) > 0
+
+    def test_success_resets_the_count(self, unauth_api_client):
+        self.fail(unauth_api_client, wg_api.MAX_FAILED_LOGINS - 1)
+        login(unauth_api_client)
+        self.fail(unauth_api_client, wg_api.MAX_FAILED_LOGINS - 1)
+        login(unauth_api_client)
+
+    def test_block_expires_after_the_window(self, unauth_api_client):
+        self.fail(unauth_api_client, wg_api.MAX_FAILED_LOGINS)
+        throttle = unauth_api_client.app.state.login_throttle
+        for failures in throttle._failures.values():
+            failures[:] = [t - wg_api.FAILED_LOGIN_WINDOW for t in failures]
+        login(unauth_api_client)
+
+    def test_other_addresses_are_not_blocked(self):
+        throttle = wg_api.LoginThrottle()
+        for _ in range(wg_api.MAX_FAILED_LOGINS):
+            throttle.record_failure("198.51.100.1")
+        assert throttle.retry_after("198.51.100.1") > 0
+        assert throttle.retry_after("198.51.100.2") == 0

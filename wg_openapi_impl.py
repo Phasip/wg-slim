@@ -85,10 +85,18 @@ class DefaultApiImpl(BaseDefaultApi):
         remote = f"{host}:{port}"
         ua = req.headers.get("user-agent", None)
 
+        throttle: wg_api.LoginThrottle = _get_app().state.login_throttle
+        retry_after = throttle.retry_after(host)
+        if retry_after:
+            logger.warning("Login refused from %s: too many failed attempts", remote)
+            raise HTTPException(status_code=429, detail="Too many failed login attempts, try again later", headers={"Retry-After": str(retry_after)})
+
         if not cfg.check_password(password):
+            throttle.record_failure(host)
             logger.warning("Login failed from %s user_agent=%s", remote, ua)
             raise HTTPException(status_code=403, detail="Invalid password")
 
+        throttle.record_success(host)
         logger.info("Login succeeded from %s user_agent=%s", remote, ua)
 
         token = wg_api.create_access_token(app=_get_app())

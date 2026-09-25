@@ -51,6 +51,47 @@ TOKEN_TTL = timedelta(hours=24)
 HTTP_METHODS = ("GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS")
 
 
+# Failed logins allowed per client address within the window before further
+# attempts are refused with 429, whatever the password.
+MAX_FAILED_LOGINS = 5
+FAILED_LOGIN_WINDOW = timedelta(minutes=5)
+
+
+class LoginThrottle:
+    """Tracks failed logins per client address to slow down password guessing.
+
+    Behind a reverse proxy every client shares the proxy's address unless
+    uvicorn trusts its X-Forwarded-For (set FORWARDED_ALLOW_IPS).
+    """
+
+    def __init__(self) -> None:
+        self._failures: dict[str, list[datetime]] = {}
+
+    def _prune(self, now: datetime) -> None:
+        cutoff = now - FAILED_LOGIN_WINDOW
+        for client in list(self._failures):
+            recent = [t for t in self._failures[client] if t > cutoff]
+            if recent:
+                self._failures[client] = recent
+            else:
+                del self._failures[client]
+
+    def retry_after(self, client: str) -> int:
+        """Seconds until `client` may try again, or 0 if it is not blocked."""
+        now = datetime.now(timezone.utc)
+        self._prune(now)
+        failures = self._failures.get(client, [])
+        if len(failures) < MAX_FAILED_LOGINS:
+            return 0
+        return max(1, int((failures[0] + FAILED_LOGIN_WINDOW - now).total_seconds()) + 1)
+
+    def record_failure(self, client: str) -> None:
+        self._failures.setdefault(client, []).append(datetime.now(timezone.utc))
+
+    def record_success(self, client: str) -> None:
+        self._failures.pop(client, None)
+
+
 def revoke_active_token(app: FastAPI) -> None:
     token_value = token.get(None)
     if token_value:
@@ -264,6 +305,8 @@ def create_app(sync_service: WgConfigSyncService | None = None, config_file: str
         # get the same Error body as the ones raised by our handlers.
         assert isinstance(exc, StarletteHTTPException)  # allow_motivation: Known type, only for type checker
         response = mkerror(exc.status_code, exc.detail)
+        if exc.headers:
+            response.headers.update(exc.headers)
         if exc.status_code == 405:
             response.headers["Allow"] = allowed_methods(request)
         return response
@@ -280,6 +323,7 @@ def create_app(sync_service: WgConfigSyncService | None = None, config_file: str
         root_app.add_exception_handler(exc, _unified_exception_handler)
 
     root_app.state.active_tokens = {}  # dict[str, datetime]: token -> expiry
+    root_app.state.login_throttle = LoginThrottle()
     root_app.state.log_handler = _log_handler
 
     root_app.state.config_manager = _config_manager
