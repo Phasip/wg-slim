@@ -48,11 +48,31 @@ When a hash is configured, changing the password in the web UI stores a new hash
 
 ## Configuration
 
-The server and each peer has two sections, "inteface" and "as_peer". The "interface" section configures [Interface] section for that users config. The "as_peer" section configures "[Peer]" section that will be seen in other configs.
+The server and each peer has two sections, "interface" and "as_peer". The "interface" section configures [Interface] section for that users config. The "as_peer" section configures "[Peer]" section that will be seen in other configs.
 
 Two rules are enforced on every save, and a config violating either is rejected with a 400: peer names must be unique, and one peer must be named after `server.name` (that peer holds the server's own interface). Renaming the server peer therefore fails — change `server.name` and the peer name together in the config editor.
 
 New peers get the next free address in the server's subnet, and take `DNS` and `MTU` from the peer marked `default: true` (by default the server peer). If that peer doesn't set them, `DNS = 1.1.1.1, 8.8.8.8` and `MTU = 1420` are used.
+
+Changes that only touch peers are applied live with `wg syncconf`. A change to the server peer's `interface` section (Address, MTU, DNS, Table, PostUp/PostDown, ...) restarts the WireGuard interface, which briefly interrupts the VPN.
+
+## Firewall rules
+
+`server.fw_rules` is an nftables template. It is loaded into its own `inet wgslim_fwrules` table, so the rules apply to both IPv4 and IPv6. Two variables are substituted:
+
+- `{{interface_name}}`: `server.interface_name`
+- `{{AllowedIPs}}`: the server peer's AllowedIPs value
+
+```yaml
+server:
+  fw_rules: |
+    chain forward {
+      type filter hook forward priority 0;
+      iifname {{interface_name}} ip daddr 192.168.1.0/24 drop;
+    }
+```
+
+Versions before this one used an IPv4-only `ip wgeasy_fwrules` table; it is removed automatically on the next sync.
 
 ## PreSharedKey (PSK) handling
 
@@ -150,7 +170,7 @@ make test-docker
 - Changing the password revokes every other session (the caller keeps its own)
 - Config is written atomically and always as 0600 (it holds every private key)
 - YAML submitted through the API may not use aliases (blocks alias-expansion bombs)
-- Specification first API design with auto-generated server routes enforicing input format and authentication
+- Specification first API design with auto-generated server routes enforcing input format and authentication
 - Lots of tests to counter horrible AI coding
 - Low attack surface (no databases, only local bootstrap in frontend, minimal dependencies)
 
