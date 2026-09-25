@@ -27,5 +27,7 @@ def test_update_all_peers_applies_template(generated_api_client, config_for_test
     as_peer = peer2.as_peer or ""
     assert "Endpoint = templ.example.com:51820" in as_peer
     assert "PersistentKeepalive = 42" in as_peer
-    # PublicKey should remain unchanged for peer2
+    # PublicKey and AllowedIPs identify peer2 and must remain unchanged
     assert "peer2_public_key" in as_peer
+    assert "AllowedIPs = 10.0.0.3/32" in as_peer
+    assert "10.0.0.2/32" not in as_peer

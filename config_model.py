@@ -149,6 +149,11 @@ class ConfigHelper:
             setattr(obj, key, value)
 
 
+# `as_peer` keys that identify a single peer and so are never copied by
+# `apply_template_to_peers`. Lowercase, matching `WireguardDict` storage.
+TEMPLATE_SKIP_KEYS = {"publickey", "allowedips"}
+
+
 def get_peer(cfg: WireGuardConfig, name: str) -> Peer:
     """Return a peer object from a WireGuard config or raise PeerNotFoundException."""
     try:
@@ -462,7 +467,9 @@ class SyncedConfigManager:
     def apply_template_to_peers(self, template_name: str) -> None:
         """Apply the `as_peer` WireGuard section from the named template peer
         to all other peers (excluding the template itself and the server
-        peer). The PublicKey field is never overwritten.
+        peer). Per-peer identity (`TEMPLATE_SKIP_KEYS`) is never overwritten:
+        copying AllowedIPs would give every peer the template's address, and
+        WireGuard routes an address to only one peer.
 
         This method mutates the in-memory config and persists it via
         `save()` while holding the internal lock.
@@ -478,7 +485,7 @@ class SyncedConfigManager:
                     continue
                 dst = wg_utils.parse_wg_section(p.as_peer)
                 for k, v in tpl.items():
-                    if k == "PublicKey":
+                    if k.lower() in TEMPLATE_SKIP_KEYS:
                         continue
                     dst[k] = v
                 p.as_peer = wg_utils.build_wg_section(dst)
