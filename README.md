@@ -52,6 +52,8 @@ The server and each peer has two sections, "inteface" and "as_peer". The "interf
 
 Two rules are enforced on every save, and a config violating either is rejected with a 400: peer names must be unique, and one peer must be named after `server.name` (that peer holds the server's own interface). Renaming the server peer therefore fails — change `server.name` and the peer name together in the config editor.
 
+New peers get the next free address in the server's subnet, and take `DNS` and `MTU` from the peer marked `default: true` (by default the server peer). If that peer doesn't set them, `DNS = 1.1.1.1, 8.8.8.8` and `MTU = 1420` are used.
+
 ## PreSharedKey (PSK) handling
 
 wg-slim supports PSK configuration with some caveats. Each peer, including server, can only have one PSK defined.

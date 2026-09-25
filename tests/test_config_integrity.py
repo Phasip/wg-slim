@@ -11,6 +11,7 @@ import pytest
 import yaml
 
 import config_model
+import wg_utils
 from config_model import ConfigValidationError, SyncedConfigManager
 
 BASE_CONFIG = {
@@ -151,6 +152,30 @@ class TestSaveRollback:
         with pytest.raises(config_model.ConfigSyncException, match="wg failed"):
             manager.save()
         assert config_model.get_peer(manager.config, "alice").enabled is True
+
+
+class TestNewPeerDefaults:
+    def interface_of(self, manager, name):
+        return wg_utils.parse_wg_section(config_model.get_peer(manager.config, name).interface)
+
+    def test_dns_and_mtu_come_from_default_peer(self, manager):
+        manager.update_peer_from_yaml("server", peer_yaml(manager, "server", interface="Address = 10.30.0.1/24\nPrivateKey = SRVKEY\nDNS = 10.30.0.1\nMTU = 1380"))
+        manager.add_peer("bob")
+        bob = self.interface_of(manager, "bob")
+        assert bob["DNS"] == "10.30.0.1"
+        assert bob["MTU"] == "1380"
+
+    def test_missing_values_fall_back(self, manager):
+        # The server peer in BASE_CONFIG is `default` but sets neither DNS nor MTU
+        manager.add_peer("bob")
+        bob = self.interface_of(manager, "bob")
+        assert bob["DNS"] == "1.1.1.1, 8.8.8.8"
+        assert bob["MTU"] == "1420"
+
+    def test_other_default_peer_is_used(self, manager):
+        manager.update_peer_from_yaml("alice", peer_yaml(manager, "alice", interface="Address = 10.30.0.2/32\nPrivateKey = ALICEKEY\nDNS = 9.9.9.9", default=True))
+        manager.add_peer("bob")
+        assert self.interface_of(manager, "bob")["DNS"] == "9.9.9.9"
 
 
 class TestLockedAccess:

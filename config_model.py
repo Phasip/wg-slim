@@ -164,6 +164,9 @@ def get_peer(cfg: WireGuardConfig, name: str) -> Peer:
         raise PeerNotFoundException(f"Peer '{name}' not found") from None
 
 
+# [Interface] values for new peers when the `default` peer doesn't set them.
+NEW_PEER_INTERFACE_DEFAULTS = {"DNS": "1.1.1.1, 8.8.8.8", "MTU": "1420"}
+
 # `basic` holds exactly one of these; see `_validate_password_settings`.
 PASSWORD_FIELDS = ("password", "password_hash")
 
@@ -352,8 +355,7 @@ class SyncedConfigManager:
                 {
                     "Address": f"{next_ip}/32",
                     "PrivateKey": priv,
-                    "DNS": "1.1.1.1, 8.8.8.8",
-                    "MTU": "1420",
+                    **self._new_peer_interface_defaults(),
                 }
             )
             as_peer_data = wg_utils.WireguardDict(
@@ -370,6 +372,19 @@ class SyncedConfigManager:
             self._config.peers.append(peer)
             self.save()
             return peer
+
+    def _new_peer_interface_defaults(self) -> dict[str, str]:
+        """DNS and MTU for a new peer: taken from the peer marked `default`,
+        falling back to NEW_PEER_INTERFACE_DEFAULTS for keys it doesn't set."""
+        values = dict(NEW_PEER_INTERFACE_DEFAULTS)
+        template = next((p for p in self._config.peers if p.default), None)
+        if template is not None:
+            section = wg_utils.parse_wg_section(template.interface)
+            for key in values:
+                value = section.get(key)
+                if value:
+                    values[key] = value
+        return values
 
     def remove_peer(self, name: str) -> None:
         with self._lock:
