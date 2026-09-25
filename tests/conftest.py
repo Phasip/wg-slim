@@ -108,12 +108,6 @@ def mock_wg_manager():
     outputs = {
         "wg show": (0, "interface: wg1\npeer: peer1", ""),
         "wg set": (0, "", ""),
-        "wg show wg1 dump": (
-            0,
-            """oDc9eSDHLHnCHoJLSAJoP5t0oVggdS4v/88nyJDMDlw=	9eTs8Qu4TTtpfgw2giifjHYNLLiJeAONb5H7KfCofgA=	46396	off
-                WTz4e3nWf77WBypawV7BixKwaqNRW6n4H2ZPu5iRoRI=	p75rBOsUAKmQER31HnExVGRMTS2s4xDgVrnaJUnUX2A=	198.51.100.1:51820	10.0.0.0/24	1767101844	88658272	876116492	60""",
-            "",
-        ),
         "ip link show dev wg1": (
             0,
             "5: wg0: <POINTOPOINT,NOARP,UP,LOWER_UP> mtu 1420 qdisc noqueue state UNKNOWN mode DEFAULT group default qlen 1000\n    link/none ",

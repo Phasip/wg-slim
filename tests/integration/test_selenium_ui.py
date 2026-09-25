@@ -176,12 +176,6 @@ class ASGITestServer:
         mock_manager.is_interface_up.return_value = True
         mock_manager.interface = "wg0"
 
-        stats_obj = MagicMock()
-        peer_stat = MagicMock()
-        peer_stat.public_key = "aFcrala5TI5GAAS5kNwXg1YR+jPkKVB8WchLQqzfyG8="
-        peer_stat.allowed_ips = ["10.0.0.2/32"]
-        stats_obj.peers = [peer_stat]
-        mock_manager.get_interface_stats.return_value = stats_obj
         MockWgManager.return_value = mock_manager
 
         api = WireGuardAPI(

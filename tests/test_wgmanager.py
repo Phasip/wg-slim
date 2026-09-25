@@ -1,15 +1,6 @@
-"""Unit tests for `WgManager` and `PeerStats` using pytest fixtures."""
+"""Unit tests for `WgManager` using pytest fixtures."""
 
-from wg_manager import WgManager, PeerStats
-
-
-def test_peerstats_basic():
-    peer = PeerStats(public_key="testkey", endpoint="1.2.3.4:51820", allowed_ips=["10.0.0.2/32"], transfer_rx=1024, transfer_tx=2048)
-    assert peer.public_key == "testkey"
-    assert peer.endpoint == "1.2.3.4:51820"
-    assert peer.allowed_ips == ["10.0.0.2/32"]
-    assert peer.transfer_rx == 1024
-    assert peer.transfer_tx == 2048
+from wg_manager import WgManager
 
 
 def test_is_interface_up_true(mock_wg_manager):
@@ -22,29 +13,6 @@ def test_is_interface_up_false(mock_wg_manager):
     # Ensure the fixture will report the interface as down
     mock_wg_manager["ip link show dev wg0"] = (1, "", "")
     assert WgManager.is_interface_up("wg0") is False
-
-
-def test_get_interface_stats(mock_wg_manager):
-    dump_output = """privatekey123	publickey456	51820	off
-peerpubkey1	(none)	1.2.3.4:51820	10.0.0.2/32	1733745600	1024	2048	off
-peerpubkey2	(none)	(none)	10.0.0.3/32	0	0	0	25
-"""
-    mock_wg_manager["wg show wg0 dump"] = (0, dump_output, "")
-
-    stats = WgManager.get_interface_stats("wg0")
-
-    assert stats.name == "wg0"
-    assert stats.private_key == "privatekey123"
-    assert stats.public_key == "publickey456"
-    assert stats.listening_port == 51820
-    assert len(stats.peers) == 2
-
-    peer1 = stats.peers[0]
-    assert peer1.public_key == "peerpubkey1"
-    assert peer1.endpoint == "1.2.3.4:51820"
-    assert peer1.allowed_ips == ["10.0.0.2/32"]
-    assert peer1.transfer_rx == 1024
-    assert peer1.transfer_tx == 2048
 
 
 def test_get_wg_show_peer_blocks(mock_wg_manager):

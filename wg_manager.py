@@ -1,39 +1,13 @@
-"""WireGuard manager for interface and peer statistics and config sync."""
+"""Thin wrappers around the `wg`, `wg-quick` and `ip` commands."""
 
 from __future__ import annotations
 
 import logging
 import subprocess
-from dataclasses import dataclass, field
-from datetime import datetime
 from typing import Optional
 import tempfile
 
 logger = logging.getLogger(__name__)
-
-
-@dataclass
-class PeerStats:
-    public_key: str
-    endpoint: Optional[str] = None
-    allowed_ips: list[str] = field(default_factory=list[str])
-    latest_handshake: Optional[datetime] = None
-    transfer_rx: int = 0
-    transfer_tx: int = 0
-    persistent_keepalive: Optional[int] = None
-
-
-@dataclass
-class InterfaceStats:
-    name: str
-    private_key: str
-    public_key: str
-    listening_port: int
-    peers: list[PeerStats] = field(default_factory=list[PeerStats])
-
-    @property
-    def peer_count(self) -> int:
-        return len(self.peers)
 
 
 class WgManager:
@@ -73,47 +47,6 @@ class WgManager:
     def is_interface_up(cls, interface: str) -> bool:
         (returncode, _, _) = cls._run_command(["ip", "link", "show", "dev", interface], check=False)
         return returncode == 0
-
-    @classmethod
-    def get_interface_stats(cls, interface: str) -> InterfaceStats:
-        """Parse `wg show <interface> dump` output and return InterfaceStats.
-
-        Assumes the standard dump format.
-        """
-        (_, stdout, _) = cls._run_command(["wg", "show", interface, "dump"])
-        lines = stdout.strip().splitlines()
-
-        if not lines:
-            raise ValueError(f"No data returned for interface {interface}")
-
-        hdr = lines[0].split("\t")
-        iface = InterfaceStats(
-            name=interface,
-            private_key=hdr[0],
-            public_key=hdr[1],
-            listening_port=int(hdr[2]),
-        )
-
-        for line in lines[1:]:
-            public_key, _, endpoint, allowed, latest_ts, rx, tx, pka = line.split("\t")[:8]
-
-            latest_handshake = datetime.fromtimestamp(int(latest_ts)) if latest_ts != "0" else None
-            allowed_ips = [] if allowed == "(none)" else allowed.split(",")
-            persistent_keepalive = None if pka == "off" else int(pka)
-
-            iface.peers.append(
-                PeerStats(
-                    public_key=public_key,
-                    endpoint=None if endpoint == "(none)" else endpoint,
-                    allowed_ips=allowed_ips,
-                    latest_handshake=latest_handshake,
-                    transfer_rx=int(rx),
-                    transfer_tx=int(tx),
-                    persistent_keepalive=persistent_keepalive,
-                )
-            )
-
-        return iface
 
     @classmethod
     def bring_up(cls, config_file: str) -> None:

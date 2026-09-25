@@ -593,11 +593,6 @@ class SyncedConfigManager:
                 self._config = old
                 raise
 
-    def set_peers(self, new_peers: list[Peer]) -> None:
-        with self._lock:
-            self._config.peers = new_peers
-            self.save()
-
     def apply_template_to_peers(self, template_name: str) -> None:
         """Apply the `as_peer` WireGuard section from the named template peer
         to all other peers (excluding the template itself and the server
