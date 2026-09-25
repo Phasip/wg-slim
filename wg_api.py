@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import logging.handlers
 import os
 import stat
 import secrets
@@ -36,10 +37,9 @@ from openapi_server.models.error import Error as OpenAPIError
 VERSION = "dev build dev"
 
 
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
-)
+LOG_FORMAT = "%(asctime)s [%(levelname)s] %(name)s: %(message)s"
+
+logging.basicConfig(level=logging.INFO, format=LOG_FORMAT)
 logger = logging.getLogger(__name__)
 
 token: ContextVar[str] = ContextVar("token")
@@ -90,6 +90,42 @@ class LoginThrottle:
 
     def record_success(self, client: str) -> None:
         self._failures.pop(client, None)
+
+
+# The log file is rotated at this size, keeping one previous file.
+LOG_MAX_BYTES = 1024 * 1024
+LOG_BACKUP_COUNT = 1
+
+
+class PrivateRotatingFileHandler(logging.handlers.RotatingFileHandler):
+    """A RotatingFileHandler whose files are only readable by their owner.
+
+    The log sits next to the config and records client IPs and user agents.
+    Opening with mode 0600 (rather than chmod after the fact) also covers the
+    fresh file created on every rotation.
+    """
+
+    def _open(self):  # pyright: ignore[reportIncompatibleMethodOverride]
+        fd = os.open(self.baseFilename, os.O_WRONLY | os.O_APPEND | os.O_CREAT, 0o600)
+        os.fchmod(fd, 0o600)
+        return os.fdopen(fd, "a", encoding=self.encoding, errors=self.errors)
+
+
+_installed_log_handler: logging.Handler | None = None
+
+
+def install_log_handler(log_file: str) -> PrivateRotatingFileHandler:
+    """Log to `log_file`, replacing the handler a previous `create_app` installed."""
+    global _installed_log_handler
+    root = logging.getLogger()
+    if _installed_log_handler is not None:
+        root.removeHandler(_installed_log_handler)
+        _installed_log_handler.close()
+    handler = PrivateRotatingFileHandler(log_file, maxBytes=LOG_MAX_BYTES, backupCount=LOG_BACKUP_COUNT, encoding="utf-8")
+    handler.setFormatter(logging.Formatter(LOG_FORMAT))
+    root.addHandler(handler)
+    _installed_log_handler = handler
+    return handler
 
 
 def revoke_active_token(app: FastAPI) -> None:
@@ -207,14 +243,7 @@ def create_app(sync_service: WgConfigSyncService | None = None, config_file: str
     if bool(st.st_mode & stat.S_IWOTH):
         logger.warning("Config file %s is world-writable; set permissions to 600 to protect secrets", config_file)
 
-    log_file = wg_utils.log_file_path(_config_manager.file_path)
-    _log_handler = logging.FileHandler(log_file)
-    try:
-        # The log sits next to the config and records client IPs and user agents.
-        os.chmod(log_file, 0o600)
-    except OSError as e:
-        logger.warning("Could not restrict permissions on %s: %s", log_file, e)
-    logging.getLogger().addHandler(_log_handler)
+    _log_handler = install_log_handler(wg_utils.log_file_path(_config_manager.file_path))
     logger.info("Starting WG-Slim")
 
     _sync_service: WgConfigSyncService = sync_service if sync_service is not None else WgConfigSyncService(config_manager=_config_manager)

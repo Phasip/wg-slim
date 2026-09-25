@@ -8,6 +8,7 @@ Importing this module at startup will register the implementation via
 
 from openapi_server.apis.default_api_base import BaseDefaultApi
 
+import collections
 import os
 import logging
 
@@ -139,9 +140,10 @@ class DefaultApiImpl(BaseDefaultApi):
         log_file = wg_utils.log_file_path(get_cm().file_path)
         if not os.path.exists(log_file):
             return ServerLogsResponse(logs=[])
-        with open(log_file, "r", encoding="utf-8") as f:
-            lines = f.readlines()
-        return ServerLogsResponse(logs=[line.rstrip("\n") for line in lines[-LOG_TAIL_LINES:]])
+        with open(log_file, "r", encoding="utf-8", errors="replace") as f:
+            # Streams the file, holding only the last lines in memory.
+            lines = collections.deque(f, maxlen=LOG_TAIL_LINES)
+        return ServerLogsResponse(logs=[line.rstrip("\n") for line in lines])
 
     async def server_logs_delete(self) -> Success:
         handler = _get_app().state.log_handler
@@ -149,6 +151,10 @@ class DefaultApiImpl(BaseDefaultApi):
         try:
             handler.stream.seek(0)
             handler.stream.truncate(0)
+            for i in range(1, handler.backupCount + 1):
+                rotated = f"{handler.baseFilename}.{i}"
+                if os.path.exists(rotated):
+                    os.remove(rotated)
         finally:
             handler.release()
         return Success(message="")
