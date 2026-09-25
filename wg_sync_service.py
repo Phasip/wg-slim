@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import os
+import re
 import subprocess
 
 
@@ -11,6 +12,21 @@ import wg_manager
 from config_model import SyncedConfigManager, ConfigSyncException
 
 logger = logging.getLogger(__name__)
+
+
+def _read_file(path: str) -> str | None:
+    try:
+        with open(path, encoding="utf-8") as f:
+            return f.read()
+    except FileNotFoundError:
+        return None
+
+
+def _interface_section(content: str | None) -> str | None:
+    """Return the [Interface] part of a generated config (everything before the first [Peer])."""
+    if content is None:
+        return None
+    return re.split(r"^\[Peer\]", content, maxsplit=1, flags=re.MULTILINE)[0].strip()
 
 
 class WgConfigSyncService:
@@ -50,6 +66,16 @@ class WgConfigSyncService:
 
         os.makedirs(self.output_dir, exist_ok=True)
         content = self.config_manager.generate_server_config(self.config_manager.config.server.name)
+
+        # `wg syncconf` only applies keys, ListenPort and peers. Address, MTU,
+        # DNS, Table and the Pre/Post hooks are applied by wg-quick when the
+        # interface comes up, so a change to them needs a restart. Brought
+        # down before the new file is written, so wg-quick runs the PostDown
+        # hooks of the config that brought the interface up.
+        if wg_manager.WgManager.is_interface_up(interface) and _interface_section(_read_file(output_config)) != _interface_section(content):
+            logger.info("[Interface] settings of %s changed; restarting it", interface)
+            wg_manager.WgManager.bring_down(output_config)
+
         # Write with O_CREAT so the file is created with mode 0o600 if new,
         # then chmod to enforce 0o600 on pre-existing files too (private keys inside).
         fd = os.open(output_config, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
